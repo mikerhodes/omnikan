@@ -115,8 +115,30 @@
       color: #999;
     }
 
-    .card-name {
+    .card-body {
       flex: 1;
+      min-width: 0;
+    }
+
+    .card-name {
+      line-height: 1.4;
+    }
+
+    .card-note {
+      margin-top: 4px;
+      font-size: 0.75rem;
+      color: #666;
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .card-note a {
+      color: #5a7abf;
+      text-decoration: none;
+    }
+
+    .card-note a:hover {
+      text-decoration: underline;
     }
 
     .card-check {
@@ -195,7 +217,7 @@
       if (tasks.length === 0) {
         cards.innerHTML = '<div class="empty">No tasks</div>';
       } else {
-        cards.innerHTML = tasks.map(function(t) { return cardHtml(t); }).join("");
+        cards.innerHTML = tasks.map(function(t) { return cardHtml(t, col); }).join("");
       }
 
       var col_el = document.getElementById("col-" + col);
@@ -246,13 +268,19 @@
     // Tracks pending completion timers: taskId -> setTimeout handle
     var completionTimers = {};
 
-    function cardHtml(task) {
+    function cardHtml(task, col) {
+      var note = (col === "inprogress" && task.note)
+        ? '<div class="card-note">' + linkify(escapeHtml(task.note)) + '</div>'
+        : '';
       return '<div class="card" draggable="true" data-id="' + task.id + '"'
         + ' ondragstart="onDragStart(event)"'
         + ' ondragend="onDragEnd(event)">'
         + '<input type="checkbox" class="card-check" title="Mark complete"'
         + ' onchange="onCheckChange(event,\'' + task.id + '\')">'
-        + '<span class="card-name">' + escapeHtml(task.name) + '</span>'
+        + '<div class="card-body">'
+        + '<div class="card-name">' + escapeHtml(task.name) + '</div>'
+        + note
+        + '</div>'
         + '</div>';
     }
 
@@ -357,6 +385,17 @@
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
+    }
+
+    // Linkify URLs in already-escaped HTML. Matches http(s):// URLs and
+    // wraps them in an anchor tag. Must run after escapeHtml.
+    function linkify(escaped) {
+      return escaped.replace(
+        /https?:\/\/[^\s<>"']*/g,
+        function(url) {
+          return '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
+        }
+      );
     }
 
     function setStatus(msg) {

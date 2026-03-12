@@ -25,8 +25,8 @@ if (matchingTags.length === 0) {
     var ofTag = matchingTags()[0]
 
     var tasks = ofTag.tasks()
-        .filter(function(t) { return t.completed() === false })
-        .map(function(t) { return { id: t.id(), name: t.name() } })
+        .filter(function(t) { return t.completed() === false && t.dropped() === false })
+        .map(function(t) { return { id: t.id(), name: t.name(), note: t.note() } })
 
     JSON.stringify(tasks)
 }

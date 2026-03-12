@@ -23,6 +23,7 @@ const (
 type Task struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	Note string `json:"note"`
 }
 
 type tagQuery struct {

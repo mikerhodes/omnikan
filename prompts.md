@@ -126,3 +126,12 @@ off a new read from Omnifocus.
 complete? So if the user refreshes the page, things don't appear wrong?
 
 > Turned out this needed fixing
+
+# notes are useful for inprogress
+
+❯ Add the Omnifocus notes to the In Progress tasks only. Make sure the cards still look
+nice. The notes text should be smaller than the title.
+
+❯ Make sure that URLs in the notes are clickable.
+
+❯ That regex isn't working. For https://dx13.co.uk/foo it's only linking https://dx13.c
