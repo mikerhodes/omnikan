@@ -113,3 +113,16 @@ user can uncheck the checkbox in case they made a mistake.
 something.
 
 ❯ Fade the heading text and count blob a bit too
+
+# Performance
+
+❯ I don't like waiting for the tasks to load in the UX. Let's change that. Instead, have
+the Go app read the items at startup, then refresh every 10 minutes. Keep the items in a
+cache and change the callback to load the items so it uses the cache. It shouldn't kick
+off a new read from Omnifocus.
+
+
+❯ Presumably the cached versions are updated when tasks are moved columns or marked
+complete? So if the user refreshes the page, things don't appear wrong?
+
+> Turned out this needed fixing

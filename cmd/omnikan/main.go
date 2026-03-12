@@ -16,18 +16,25 @@ var (
 	static embed.FS
 )
 
+const boardRefreshInterval = 10 * time.Minute
+
 type boardResponse struct {
 	Backlog    []omnifocus.Task `json:"backlog"`
 	Ready      []omnifocus.Task `json:"ready"`
 	InProgress []omnifocus.Task `json:"inprogress"`
 }
 
-// cache holds the last fetched board and a map of task ID -> column tag,
-// used to look up a task's current tag when moving it.
+type cachedTask struct {
+	task omnifocus.Task
+	col  string
+}
+
+// cache holds the last fetched board and a per-task lookup (including
+// completed tasks within the 60s undo window) for moves and completions.
 var cache struct {
-	mu      sync.Mutex
-	board   boardResponse
-	taskCol map[string]string // task ID -> tag name
+	mu    sync.Mutex
+	board boardResponse
+	tasks map[string]cachedTask // task ID -> task + current column
 }
 
 // moveMu serialises calls to OmniFocus so concurrent move requests are
@@ -35,6 +42,18 @@ var cache struct {
 var moveMu sync.Mutex
 
 func main() {
+	log.Printf("Loading board from OmniFocus...")
+	if err := refreshCache(); err != nil {
+		log.Fatalf("initial board load failed: %v", err)
+	}
+	go func() {
+		for range time.Tick(boardRefreshInterval) {
+			if err := refreshCache(); err != nil {
+				log.Printf("board refresh error: %v", err)
+			}
+		}
+	}()
+
 	mux := http.NewServeMux()
 
 	// Serve board.html at /
@@ -51,19 +70,11 @@ func main() {
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
 	})
 
-	// Fetch board from OmniFocus, update cache, return JSON
+	// Return the cached board as JSON
 	mux.HandleFunc("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		board, taskCol, err := fetchBoard()
-		if err != nil {
-			log.Printf("fetchBoard error: %v", err)
-			http.Error(w, "failed to fetch board", http.StatusInternalServerError)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
-			return
-		}
 		cache.mu.Lock()
-		cache.board = board
-		cache.taskCol = taskCol
+		board := cache.board
 		cache.mu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
@@ -95,7 +106,7 @@ func main() {
 		// so that rapid moves of the same card always use the latest oldCol.
 		moveMu.Lock()
 		cache.mu.Lock()
-		oldCol, ok := cache.taskCol[req.ID]
+		ct, ok := cache.tasks[req.ID]
 		cache.mu.Unlock()
 
 		if !ok {
@@ -104,17 +115,18 @@ func main() {
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNotFound, time.Since(start))
 			return
 		}
-		if oldCol == req.NewCol {
+		if ct.col == req.NewCol {
 			moveMu.Unlock()
 			w.WriteHeader(http.StatusNoContent)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 			return
 		}
 
-		err := omnifocus.SwapTag(req.ID, oldCol, req.NewCol)
+		err := omnifocus.SwapTag(req.ID, ct.col, req.NewCol)
 		if err == nil {
 			cache.mu.Lock()
-			cache.taskCol[req.ID] = req.NewCol
+			cache.tasks[req.ID] = cachedTask{task: ct.task, col: req.NewCol}
+			cache.board = moveBoardTask(cache.board, ct.task, ct.col, req.NewCol)
 			cache.mu.Unlock()
 		}
 		moveMu.Unlock()
@@ -143,6 +155,13 @@ func main() {
 		}
 		moveMu.Lock()
 		err := omnifocus.MarkComplete(req.ID)
+		if err == nil {
+			cache.mu.Lock()
+			if ct, ok := cache.tasks[req.ID]; ok {
+				cache.board = removeBoardTask(cache.board, req.ID, ct.col)
+			}
+			cache.mu.Unlock()
+		}
 		moveMu.Unlock()
 		if err != nil {
 			http.Error(w, "failed to complete task", http.StatusInternalServerError)
@@ -166,6 +185,13 @@ func main() {
 		}
 		moveMu.Lock()
 		err := omnifocus.MarkIncomplete(req.ID)
+		if err == nil {
+			cache.mu.Lock()
+			if ct, ok := cache.tasks[req.ID]; ok {
+				cache.board = addBoardTask(cache.board, ct.task, ct.col)
+			}
+			cache.mu.Unlock()
+		}
 		moveMu.Unlock()
 		if err != nil {
 			http.Error(w, "failed to incomplete task", http.StatusInternalServerError)
@@ -183,6 +209,21 @@ func main() {
 	}
 }
 
+// refreshCache fetches all columns from OmniFocus and updates the cache.
+func refreshCache() error {
+	board, tasks, err := fetchBoard()
+	if err != nil {
+		return err
+	}
+	cache.mu.Lock()
+	cache.board = board
+	cache.tasks = tasks
+	cache.mu.Unlock()
+	log.Printf("board cache refreshed: %d backlog, %d ready, %d inprogress",
+		len(board.Backlog), len(board.Ready), len(board.InProgress))
+	return nil
+}
+
 // isMovableColumn returns true for the valid kanban columns.
 func isMovableColumn(col string) bool {
 	return col == omnifocus.TagBacklog ||
@@ -190,12 +231,57 @@ func isMovableColumn(col string) bool {
 		col == omnifocus.TagInProgress
 }
 
-// fetchBoard retrieves tasks for all four Kanban columns from OmniFocus.
+// colSlice returns a pointer to the board slice for the given column.
+func colSlice(b *boardResponse, col string) *[]omnifocus.Task {
+	switch col {
+	case omnifocus.TagBacklog:
+		return &b.Backlog
+	case omnifocus.TagReady:
+		return &b.Ready
+	case omnifocus.TagInProgress:
+		return &b.InProgress
+	}
+	return nil
+}
+
+// moveBoardTask moves a task from one column slice to another in the board.
+func moveBoardTask(b boardResponse, t omnifocus.Task, fromCol, toCol string) boardResponse {
+	b = removeBoardTask(b, t.ID, fromCol)
+	b = addBoardTask(b, t, toCol)
+	return b
+}
+
+// removeBoardTask removes a task by ID from its column slice.
+func removeBoardTask(b boardResponse, id, col string) boardResponse {
+	s := colSlice(&b, col)
+	if s == nil {
+		return b
+	}
+	filtered := (*s)[:0]
+	for _, t := range *s {
+		if t.ID != id {
+			filtered = append(filtered, t)
+		}
+	}
+	*s = filtered
+	return b
+}
+
+// addBoardTask appends a task to a column slice.
+func addBoardTask(b boardResponse, t omnifocus.Task, col string) boardResponse {
+	s := colSlice(&b, col)
+	if s == nil {
+		return b
+	}
+	*s = append(*s, t)
+	return b
+}
+
+// fetchBoard retrieves tasks for all columns from OmniFocus.
 // Calls are sequential because the OmniFocus scripting bridge is not re-entrant.
-// Returns the board and a map of task ID -> column tag for cache use.
-func fetchBoard() (boardResponse, map[string]string, error) {
+func fetchBoard() (boardResponse, map[string]cachedTask, error) {
 	var board boardResponse
-	taskCol := map[string]string{}
+	tasks := map[string]cachedTask{}
 
 	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog)
 	if err != nil {
@@ -203,7 +289,7 @@ func fetchBoard() (boardResponse, map[string]string, error) {
 	}
 	board.Backlog = backlog
 	for _, t := range backlog {
-		taskCol[t.ID] = omnifocus.TagBacklog
+		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagBacklog}
 	}
 
 	ready, err := omnifocus.TasksForTag(omnifocus.TagReady)
@@ -212,7 +298,7 @@ func fetchBoard() (boardResponse, map[string]string, error) {
 	}
 	board.Ready = ready
 	for _, t := range ready {
-		taskCol[t.ID] = omnifocus.TagReady
+		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagReady}
 	}
 
 	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress)
@@ -221,8 +307,8 @@ func fetchBoard() (boardResponse, map[string]string, error) {
 	}
 	board.InProgress = inprogress
 	for _, t := range inprogress {
-		taskCol[t.ID] = omnifocus.TagInProgress
+		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagInProgress}
 	}
 
-	return board, taskCol, nil
+	return board, tasks, nil
 }
