@@ -135,3 +135,7 @@ nice. The notes text should be smaller than the title.
 ❯ Make sure that URLs in the notes are clickable.
 
 ❯ That regex isn't working. For https://dx13.co.uk/foo it's only linking https://dx13.c
+
+# UX updates
+
+A bunch of prompts for tweaking UX.
