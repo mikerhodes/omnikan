@@ -1,9 +1,27 @@
-# JXA Notes: Scripting OmniFocus from Go
+# JXA Notes: Scripting OmniFocus
 
 Notes from building omnikan and github-to-omnifocus. JXA
-(JavaScript for Automation) is Apple's replacement for AppleScript,
-available since OS X Yosemite. Documentation is sparse; these notes
-capture what actually works.
+(JavaScript for Automation) is Apple's scripting bridge available
+since OS X Yosemite. Documentation is sparse and inconsistent;
+these notes record what actually works.
+
+---
+
+## Running scripts
+
+```bash
+# Inline
+osascript -l JavaScript -e 'var doc = Application("OmniFocus").defaultDocument; doc.inboxTasks().length;'
+
+# From file
+osascript -l JavaScript /path/to/script.js
+
+# With jq
+osascript -l JavaScript my-script.js | jq '.[].name'
+```
+
+Always end scripts with a value — the last evaluated expression is
+printed to stdout. Use `JSON.stringify(result)` for structured data.
 
 ---
 
@@ -39,85 +57,95 @@ var args = JSON.parse($.getenv('OSA_ARGS'))
 // args.tag, args.projectName, etc.
 ```
 
-The last evaluated expression in the script is printed to stdout. Use
-`JSON.stringify(result)` as the final line to produce output.
+The OmniFocus scripting bridge is single-threaded. Concurrent
+`osascript` invocations targeting OmniFocus will contend or deadlock.
+Make calls sequentially from Go.
 
 ---
 
-## Connecting to OmniFocus
+## Boilerplate: connecting to OmniFocus
 
 ```js
-var ofApp = Application("OmniFocus")
-var ofDoc = ofApp.defaultDocument
+var app = Application("OmniFocus")
+var doc = app.defaultDocument
 ```
 
 `defaultDocument` is the main OmniFocus database. All queries start here.
 
+OmniFocus must be running. JXA cannot launch it headlessly for automation
+(it needs a UI session). Launching it adds latency and can cause the
+script to fail if the database takes too long to open.
+
 ---
 
-## Reading properties
+## Properties require `()`
 
-OmniFocus objects expose their properties as **zero-argument functions**,
-not plain properties. You must call them:
+OmniFocus objects expose properties as zero-argument functions, not plain
+properties. You must call them:
 
 ```js
-task.name()       // "Buy milk"
-task.id()         // "iAKv1Uo8XqW"
-task.completed()  // false
-task.tags()       // [Tag, Tag, ...]
+task.name()        // "Buy milk"
+task.id()          // "iAKv1Uo8XqW"
+task.completed()   // false
+task.flagged()     // true
+task.note()        // "some details"
+task.dueDate()     // JS Date object, or null
+task.tags()        // [Tag, Tag, ...]
+task.containingProject()  // Project, or null
 ```
 
-This trips you up constantly when first writing JXA. If you write
-`task.name` you get a specifier object, not a string.
+Writing `task.name` gives you a specifier object, not a string.
 
 ---
 
-## whose() — server-side filtering
+## whose() — OmniFocus-side filtering
 
-`whose()` is OmniFocus's built-in filter. It runs inside OmniFocus
-before any data crosses the scripting bridge, so it is fast.
+`whose()` pushes a filter query into OmniFocus before any data crosses
+the scripting bridge. It is the primary performance tool.
 
 ```js
 // Find a tag by name
-var tags = ofDoc.flattenedTags.whose({ name: "backlog" })
+var tags = doc.flattenedTags.whose({ name: "backlog" })
 
 // Find a project by name
-var project = ofDoc.flattenedProjects.whose({ name: "My Project" })[0]
+var project = doc.flattenedProjects.whose({ name: "My Project" })[0]
 
 // Find a task by ID
-var task = ofDoc.flattenedTasks.whose({ id: "iAKv1Uo8XqW" })[0]
+var task = doc.flattenedTasks.whose({ id: "iAKv1Uo8XqW" })[0]
 
-// Find incomplete tasks (see performance section for caveats)
-var incomplete = ofDoc.flattenedTasks.whose({ completed: false })
+// Find incomplete tasks
+var incomplete = doc.flattenedTasks.whose({ completed: false })
 ```
 
-`whose()` returns a specifier, not an array. Call it `()` to
+`whose()` returns a *specifier*, not an array. Call it `()` to
 materialise the array:
 
 ```js
-var tagArray = ofDoc.flattenedTags.whose({ name: "backlog" })()
+var tagArray = doc.flattenedTags.whose({ name: "backlog" })()
 // tagArray is now a real JS array
 
 // Or index directly without materialising:
-var firstTag = ofDoc.flattenedTags.whose({ name: "backlog" })[0]
+var firstTag = doc.flattenedTags.whose({ name: "backlog" })[0]
 ```
 
-**Important:** checking `.length` on a specifier works without
-materialising it:
+Checking `.length` on a specifier works without materialising it:
 
 ```js
-if (ofDoc.flattenedTags.whose({ name: args.tag }).length === 0) {
+if (doc.flattenedTags.whose({ name: "kanban" }).length === 0) {
     // tag doesn't exist
 }
 ```
+
+Once you materialise with `()` you have a plain JS array — use `.filter()`
+from there. `whose()` only works on specifiers.
 
 ---
 
 ## Performance: the scripting bridge tax
 
 Every property access on an OmniFocus object crosses the scripting
-bridge. This is slow. The key rule: **minimise the number of objects
-you ask OmniFocus to hand you**.
+bridge. This is slow. The key rule: minimise the number of objects you
+ask OmniFocus to hand you.
 
 ### Measured timings (real database, 3 matching tasks)
 
@@ -130,22 +158,21 @@ you ask OmniFocus to hand you**.
 ### The slow anti-pattern: fetching everything
 
 ```js
-// DON'T DO THIS — fetches every task in the database across the bridge
-var tasks = ofDoc.flattenedTasks()
+// DON'T DO THIS — materialises every task in the database across the bridge
+var tasks = doc.flattenedTasks()
     .filter(function(t) { return t.completed() === false })
     .filter(function(t) {
         return t.tags().some(function(tag) { return tag.id() === ofTag.id() })
     })
 ```
 
-`flattenedTasks()` materialises every task object. Each `t.completed()`
-and `t.tags()` call is another bridge crossing. On a large database
+`flattenedTasks()` fetches every task. Each `t.completed()` and
+`t.tags()` call is another bridge crossing. On a large database
 (thousands of tasks) this takes 20+ seconds.
 
 ### The fast pattern: start narrow
 
-Start from the most specific collection you can, then fetch only what
-you need:
+Start from the most specific collection you can:
 
 ```js
 // Start from the tag — only fetches tasks that actually have it
@@ -154,48 +181,183 @@ var tasks = ofTag.tasks()
     .map(function(t) { return { id: t.id(), name: t.name() } })
 ```
 
-`ofTag.tasks()` asks OmniFocus to return only the tasks bearing that
-tag. For a typical kanban tag with a handful of tasks, this is ~0.35s
-vs ~24s for the full scan.
+`ofTag.tasks()` asks OmniFocus to return only the tasks bearing that tag.
+For a typical kanban tag with a handful of tasks this is ~0.35s vs ~24s
+for the full scan.
 
-The same principle applies elsewhere:
+Same principle elsewhere:
 
 ```js
-// Prefer project.tasks() over scanning flattenedTasks for a project
+// Prefer project.tasks() over scanning flattenedTasks
 var tasks = project.tasks()
 
-// Prefer ofDoc.inboxTasks() to fetch inbox items
-var inbox = ofDoc.inboxTasks()
+// Prefer doc.inboxTasks() to fetch inbox items
+var inbox = doc.inboxTasks()
+```
+
+---
+
+## Reading tasks
+
+### Inbox tasks
+
+```js
+var tasks = doc.inboxTasks().filter(function(t) {
+    return !t.completed() && !t.dropped()
+}).map(function(t) {
+    return {
+        id:        t.id(),
+        name:      t.name(),
+        flagged:   t.flagged(),
+        note:      t.note(),
+        tags:      t.tags().map(function(tg) { return tg.name() })
+    }
+})
+JSON.stringify(tasks)
+```
+
+`doc.inboxTasks()` includes completed and dropped tasks — always filter.
+
+### All tasks across all projects
+
+```js
+var tasks = doc.flattenedTasks().filter(function(t) {
+    return !t.completed() && !t.dropped()
+}).map(function(t) {
+    var proj = t.containingProject()
+    return {
+        id:        t.id(),
+        name:      t.name(),
+        flagged:   t.flagged(),
+        dueDate:   t.dueDate() ? t.dueDate().toISOString() : null,
+        note:      t.note(),
+        project:   proj ? proj.name() : null,
+        tags:      t.tags().map(function(tg) { return tg.name() })
+    }
+})
+JSON.stringify(tasks)
+```
+
+`flattenedTasks()` includes inbox tasks. When combining with
+`inboxTasks()`, deduplicate by ID to avoid doubles.
+
+`containingProject()` returns `null` for inbox tasks — guard it.
+
+### Tasks for a tag (fast approach)
+
+```js
+ObjC.import('stdlib')
+var args = JSON.parse($.getenv('OSA_ARGS'))   // { "tag": "backlog" }
+
+var app = Application("OmniFocus")
+var doc = app.defaultDocument
+
+var matchingTags = doc.flattenedTags.whose({ name: args.tag })
+if (matchingTags.length === 0) {
+    JSON.stringify([])
+} else {
+    var ofTag = matchingTags()[0]
+    var tasks = ofTag.tasks()
+        .filter(function(t) { return t.completed() === false })
+        .map(function(t) { return { id: t.id(), name: t.name() } })
+    JSON.stringify(tasks)
+}
+```
+
+### Tasks for a project with a specific tag
+
+```js
+var project = doc.flattenedProjects.whose({ name: "My Project" })[0]
+var ofTag   = doc.flattenedTags.whose({ name: "github" })()[0]
+
+var tasks = project.tasks()
+    .filter(function(t) { return t.completed() === false })
+    .filter(function(t) {
+        return t.tags().some(function(tag) { return tag.id() === ofTag.id() })
+    })
+    .map(function(t) { return { id: t.id(), name: t.name() } })
+
+JSON.stringify(tasks)
+```
+
+---
+
+## Dates
+
+### Reading dates
+
+`dueDate()` returns a JS `Date` object or `null`.
+
+```js
+var due = t.dueDate()   // Date or null
+```
+
+### Avoiding timezone shifts with toISOString()
+
+OmniFocus stores due dates as midnight local time. `toISOString()` shifts
+to UTC, making "2026-03-15" appear as "2026-03-14T23:00:00.000Z" in a
+UTC+1 timezone. Format manually to preserve local date:
+
+```js
+function toLocalDateString(d) {
+    if (!d) return null
+    var year  = d.getFullYear()
+    var month = String(d.getMonth() + 1).padStart(2, "0")
+    var day   = String(d.getDate()).padStart(2, "0")
+    return year + "-" + month + "-" + day
+}
+// e.g. toLocalDateString(t.dueDate()) → "2026-03-15"
+```
+
+### Setting due dates
+
+`new Date("2026-03-20")` parses as UTC midnight and will be off by your
+timezone offset. Always construct from year/month/day components:
+
+```js
+// ✅ Correct — local midnight
+task.dueDate = new Date(2026, 2, 20)   // month is 0-indexed: 2 = March
+
+// ❌ Wrong — parses as UTC, shifts in non-UTC timezones
+task.dueDate = new Date("2026-03-20")
+```
+
+To clear a due date:
+
+```js
+task.dueDate = null
 ```
 
 ---
 
 ## Tags
 
-### Look up a tag by name
+### Look up a tag
+
+`flattenedTags` searches the entire hierarchy including subtags. Tags in
+OmniFocus can use ` : ` as a visual grouping separator (e.g.
+`"kanban : backlog"`) — this is just a naming convention; the full string
+is the tag name.
 
 ```js
-var matchingTags = ofDoc.flattenedTags.whose({ name: "backlog" })
+var matchingTags = doc.flattenedTags.whose({ name: "backlog" })
 if (matchingTags.length === 0) {
-    // handle missing tag
+    // tag doesn't exist
 } else {
     var ofTag = matchingTags()[0]
 }
 ```
 
-`flattenedTags` searches the entire tag hierarchy, including subtags.
-Tag names in OmniFocus can use ` : ` as a visual grouping separator
-(e.g. `"kanban : backlog"`). This is just a naming convention — the
-full string including spaces and colon is the tag name.
+`doc.tags` is top-level tags only. Use `doc.flattenedTags` for lookups.
 
 ### Create a tag if it doesn't exist
 
 ```js
 function tagFoundOrCreated(tagName) {
-    var tags = ofDoc.flattenedTags.whose({ name: tagName })
+    var tags = doc.flattenedTags.whose({ name: tagName })
     if (tags.length === 0) {
-        var newTag = ofApp.Tag({ name: tagName })
-        ofDoc.tags.push(newTag)
+        var newTag = app.Tag({ name: tagName })
+        doc.tags.push(newTag)
         return newTag
     }
     return tags()[0]
@@ -205,116 +367,238 @@ function tagFoundOrCreated(tagName) {
 ### Add a tag to a task
 
 ```js
-ofApp.add(ofTag, { to: task.tags })
+app.add(ofTag, { to: task.tags })
 ```
+
+### Remove a tag from a task
+
+```js
+app.remove(ofTag, { from: task.tags })
+```
+
+### Swap one tag for another
+
+```js
+var oldTag = doc.flattenedTags.whose({ name: "backlog" })[0]
+var newTag = doc.flattenedTags.whose({ name: "inprogress" })[0]
+
+app.remove(oldTag, { from: task.tags })
+app.add(newTag, { to: task.tags })
+```
+
+`app.remove` / `app.add` are mirrors of each other. This is how you
+move a task between Kanban columns.
 
 ### Read tags on a task
 
 ```js
-var taskTags = task.tags()   // array of Tag objects
-var hasTag = taskTags.some(function(tag) {
-    return tag.id() === ofTag.id()
-})
+var names  = task.tags().map(function(tg) { return tg.name() })
+var hasTag = task.tags().some(function(tag) { return tag.id() === ofTag.id() })
 ```
 
 ---
 
-## Tasks
-
-### Read task properties
-
-```js
-var id   = task.id()
-var name = task.name()
-var done = task.completed()
-var note = task.note()
-var due  = task.dueDate()    // JS Date or null
-```
-
-### Create a task in a project
-
-```js
-var task = ofApp.Task({
-    name: "Do the thing",
-    note: "some details",
-    dueDate: new Date(dueDateMS),  // or null
-})
-project.tasks.unshift(task)   // adds to top of project
-```
+## Creating tasks
 
 ### Add a task to the inbox
 
 ```js
-ofDoc.inboxTasks.push(task)
-```
-
-### Mark a task complete
-
-Use `ofApp.markComplete()`, not setting `task.completed = true`:
-
-```js
-var task = ofDoc.flattenedTasks.whose({ id: taskId })[0]
-ofApp.markComplete(task)
-```
-
----
-
-## Returning data to Go
-
-The last expression evaluated in the script is printed to stdout.
-Always use `JSON.stringify()`:
-
-```js
-// Return an array
-JSON.stringify(tasks)
-
-// Return an object
+var task = app.InboxTask({ name: "Buy oat milk" })
+doc.inboxTasks.push(task)
 JSON.stringify({ id: task.id(), name: task.name() })
-
-// Return nothing meaningful
-JSON.stringify(null)
 ```
 
-Go then `json.Unmarshal`s the output into the appropriate struct.
+Task objects are constructed from `app`, then pushed onto the document
+collection. No `()` on the collection when pushing.
+
+### With note, flag, and due date
+
+```js
+var task = app.InboxTask({ name: "Prepare sprint review" })
+doc.inboxTasks.push(task)
+task.note    = "Cover velocity, blockers, and Q2 roadmap"
+task.flagged = true
+task.dueDate = new Date(2026, 2, 20)   // March 20 2026
+JSON.stringify({ id: task.id(), name: task.name() })
+```
+
+### Add a task to a project
+
+```js
+var task = app.Task({
+    name:    "Do the thing",
+    note:    "some details",
+    dueDate: new Date(2026, 2, 20),   // or null
+})
+project.tasks.unshift(task)   // adds to top of project
+```
+
+Add tags afterwards:
+
+```js
+app.add(ofTag, { to: task.tags })
+```
 
 ---
 
-## Testing scripts manually
+## Completing, dropping, and deleting tasks
 
-Set `OSA_ARGS` and pipe through `jq`:
+### Complete a task
 
-```sh
-# fish shell
-set -gx OSA_ARGS '{"tag": "backlog"}'
-osascript -l JavaScript oftasksfortag.js | jq .
+Use `app.markComplete()`, not `task.completed = true`. The method also
+handles repeating tasks correctly.
 
-# bash/zsh
-OSA_ARGS='{"tag": "backlog"}' osascript -l JavaScript oftasksfortag.js | jq .
+```js
+var task = doc.flattenedTasks.whose({ id: taskId })[0]
+app.markComplete(task)
 ```
 
-Scripts can also be run without `OSA_ARGS` if you hardcode values for
-quick manual testing.
+### Drop a task (soft delete)
+
+Dropped tasks are hidden from normal views but preserved in the database.
+
+```js
+app.markDropped(task)
+```
+
+### Delete a task permanently
+
+```js
+var name = task.name()   // capture before deletion — object becomes invalid after
+var id   = task.id()
+app.delete(task)
+JSON.stringify({ id: id, name: name, deleted: true })
+```
 
 ---
 
-## Gotchas
+## Updating a task
 
-- **OmniFocus must be running.** `Application("OmniFocus")` will launch
-  it if it isn't, but this adds latency and can cause the script to fail
-  if OmniFocus takes too long to open its database.
+Mutate properties directly on a fetched task object:
 
-- **The scripting bridge is single-threaded.** Concurrent `osascript`
-  invocations targeting OmniFocus will contend or deadlock. Make calls
-  sequentially from Go.
+```js
+var task = doc.flattenedTasks.whose({ id: "iAKv1Uo8XqW" })[0]
+task.name    = "Updated name"
+task.flagged = true
+task.note    = "Added more context"
+task.dueDate = new Date(2026, 3, 1)   // April 1 2026
+```
 
-- **`// @ts-ignore` is needed** if you're editing in VS Code with a
-  TypeScript language server. `Application()` is not a standard JS
-  global and the type checker complains.
+---
 
-- **`whose()` on a specifier vs a materialised array.** `whose()` only
-  works on specifiers (before calling `()`). Once you materialise with
-  `()` you have a plain JS array and must use `.filter()`.
+## Projects
 
-- **Tag hierarchy.** `ofDoc.flattenedTags` includes all tags at all
-  levels. `ofDoc.tags` is only top-level tags. Use `flattenedTags` for
-  lookups unless you specifically need the hierarchy.
+### Read all projects
+
+```js
+var projects = doc.flattenedProjects().map(function(p) {
+    var status
+    try { status = p.status() } catch(e) { status = "active" }
+    var folder = p.folder()
+    return {
+        id:         p.id(),
+        name:       p.name(),
+        status:     status,
+        taskCount:  p.flattenedTasks().length,
+        folder:     folder ? folder.name() : null,
+        note:       p.note()
+    }
+})
+JSON.stringify(projects)
+```
+
+`p.status()` can throw on system-generated projects (like the inbox
+project) — wrap in try/catch.
+
+### Create a project
+
+```js
+var proj = app.Project({ name: "Website Redesign" })
+doc.projects.push(proj)
+JSON.stringify({ id: proj.id(), name: proj.name() })
+```
+
+### Create a project inside a folder
+
+```js
+var folders = doc.flattenedFolders.whose({ name: "Work" })()
+if (folders.length === 0) {
+    JSON.stringify({ error: "Folder not found" })
+} else {
+    var proj = app.Project({ name: "Q2 OKRs" })
+    folders[0].projects.push(proj)
+    JSON.stringify({ id: proj.id(), name: proj.name() })
+}
+```
+
+---
+
+## Folders
+
+```js
+var folders = doc.flattenedFolders().map(function(f) {
+    return {
+        id:           f.id(),
+        name:         f.name(),
+        projectCount: f.projects().length
+    }
+})
+JSON.stringify(folders)
+```
+
+---
+
+## Searching tasks by text
+
+```js
+var seen = {}
+var all  = []
+
+doc.flattenedTasks().forEach(function(t) {
+    if (!seen[t.id()]) { seen[t.id()] = true; all.push(t) }
+})
+doc.inboxTasks().forEach(function(t) {
+    if (!seen[t.id()]) { seen[t.id()] = true; all.push(t) }
+})
+
+var q = "deploy".toLowerCase()
+var matches = all.filter(function(t) {
+    return t.name().toLowerCase().indexOf(q) !== -1
+        || (t.note() && t.note().toLowerCase().indexOf(q) !== -1)
+}).map(function(t) {
+    return { id: t.id(), name: t.name() }
+})
+
+JSON.stringify(matches)
+```
+
+---
+
+## Quick reference
+
+| Goal | JXA |
+|------|-----|
+| Get document | `var doc = Application("OmniFocus").defaultDocument` |
+| Inbox tasks | `doc.inboxTasks()` |
+| All tasks (recursive) | `doc.flattenedTasks()` |
+| Tag's tasks (fast) | `ofTag.tasks()` |
+| Project's tasks | `project.tasks()` |
+| All projects | `doc.flattenedProjects()` |
+| All tags | `doc.flattenedTags()` |
+| All folders | `doc.flattenedFolders()` |
+| Find by ID | `doc.flattenedTasks.whose({ id: "abc" })[0]` |
+| Find tag by name | `doc.flattenedTags.whose({ name: "backlog" })[0]` |
+| Add inbox task | `var t = app.InboxTask({name:"..."}); doc.inboxTasks.push(t)` |
+| Add task to project | `project.tasks.unshift(task)` |
+| Create project | `var p = app.Project({name:"..."}); doc.projects.push(p)` |
+| Add tag to task | `app.add(ofTag, { to: task.tags })` |
+| Remove tag from task | `app.remove(ofTag, { from: task.tags })` |
+| Complete task | `app.markComplete(task)` |
+| Drop task | `app.markDropped(task)` |
+| Delete task | `app.delete(task)` |
+| Set due date | `task.dueDate = new Date(2026, 2, 20)` (month 0-indexed) |
+| Clear due date | `task.dueDate = null` |
+| Flag task | `task.flagged = true` |
+| Task's project | `task.containingProject() ? task.containingProject().name() : null` |
+| Task's tag names | `task.tags().map(function(tg){ return tg.name() })` |
+| Project's folder | `proj.folder() ? proj.folder().name() : null` |
