@@ -30,6 +30,10 @@ var cache struct {
 	taskCol map[string]string // task ID -> tag name
 }
 
+// moveMu serialises calls to OmniFocus so concurrent move requests are
+// queued rather than run in parallel against the single-threaded JXA bridge.
+var moveMu sync.Mutex
+
 func main() {
 	mux := http.NewServeMux()
 
@@ -87,33 +91,87 @@ func main() {
 			return
 		}
 
+		// moveMu is held for the cache read, JXA call, and cache write together
+		// so that rapid moves of the same card always use the latest oldCol.
+		moveMu.Lock()
 		cache.mu.Lock()
 		oldCol, ok := cache.taskCol[req.ID]
 		cache.mu.Unlock()
 
 		if !ok {
+			moveMu.Unlock()
 			http.Error(w, "task not found in cache", http.StatusNotFound)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNotFound, time.Since(start))
 			return
 		}
 		if oldCol == req.NewCol {
+			moveMu.Unlock()
 			w.WriteHeader(http.StatusNoContent)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 			return
 		}
 
-		if err := omnifocus.SwapTag(req.ID, oldCol, req.NewCol); err != nil {
+		err := omnifocus.SwapTag(req.ID, oldCol, req.NewCol)
+		if err == nil {
+			cache.mu.Lock()
+			cache.taskCol[req.ID] = req.NewCol
+			cache.mu.Unlock()
+		}
+		moveMu.Unlock()
+
+		if err != nil {
 			log.Printf("SwapTag error: %v", err)
 			http.Error(w, "failed to move task", http.StatusInternalServerError)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 			return
 		}
 
-		// Update cache immediately so a quick re-fetch is consistent
-		cache.mu.Lock()
-		cache.taskCol[req.ID] = req.NewCol
-		cache.mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
+	})
 
+	// Mark a task complete in OmniFocus
+	mux.HandleFunc("POST /api/complete", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
+			return
+		}
+		moveMu.Lock()
+		err := omnifocus.MarkComplete(req.ID)
+		moveMu.Unlock()
+		if err != nil {
+			http.Error(w, "failed to complete task", http.StatusInternalServerError)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
+	})
+
+	// Mark a task incomplete in OmniFocus (undo complete)
+	mux.HandleFunc("POST /api/incomplete", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
+			return
+		}
+		moveMu.Lock()
+		err := omnifocus.MarkIncomplete(req.ID)
+		moveMu.Unlock()
+		if err != nil {
+			http.Error(w, "failed to incomplete task", http.StatusInternalServerError)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
+			return
+		}
 		w.WriteHeader(http.StatusNoContent)
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	})

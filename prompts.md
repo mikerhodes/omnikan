@@ -79,3 +79,26 @@ what the old tag was.
 
 Let's remove the done column. I don't have a done state. That's just Omnifocus completed
  tasks.
+
+# drag and drop
+
+Please remove the buttons to move the cards and use drag and drop instead.
+
+> Claude made the cards move
+
+Make the cards move immediately and run the tag update call to the backend async
+
+# look 'n' feel
+
+Let's move the "loading" up to the top right rather than at the bottom.
+
+Make the columns full page height, and make them scroll inside. That will make drag and
+drop easier.
+
+# complete
+
+Let's now add a button to mark tasks "done". Make it look nice, like a checkbox that
+fires an event. The item should grey out when checked but remain in place for 60s so the
+user can uncheck the checkbox in case they made a mistake.
+
+> Claude wrote several JXA scripts to test marking done
