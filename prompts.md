@@ -74,3 +74,8 @@ write a new JXA script that will swap the tag. The in-memory cache of the tasks 
 what the old tag was.
 4. Add code to the HTML page to allow moving the items between columns.
 5. Wire up the HTML code to the new backend to update the tags.
+
+# Remove done
+
+Let's remove the done column. I don't have a done state. That's just Omnifocus completed
+ tasks.

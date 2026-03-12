@@ -129,18 +129,13 @@
       <div class="column-header">In Progress <span class="count" id="cnt-inprogress">0</span></div>
       <div class="cards" id="cards-inprogress"></div>
     </div>
-    <div class="column" id="col-done">
-      <div class="column-header">Done <span class="count" id="cnt-done">0</span></div>
-      <div class="cards" id="cards-done"></div>
-    </div>
   </div>
   <div id="status"></div>
   <div id="error"></div>
 
   <script>
-    const COLUMNS = ["backlog", "ready", "inprogress", "done"];
-    const COLUMN_LABELS = { backlog: "Backlog", ready: "Ready", inprogress: "In Progress", done: "Done" };
-    // Columns a card can be moved to (done is excluded — complete in OmniFocus)
+    const COLUMNS = ["backlog", "ready", "inprogress"];
+    const COLUMN_LABELS = { backlog: "Backlog", ready: "Ready", inprogress: "In Progress" };
     const MOVABLE = ["backlog", "ready", "inprogress"];
     const REFRESH_MS = 600000;
 

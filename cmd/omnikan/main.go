@@ -20,7 +20,6 @@ type boardResponse struct {
 	Backlog    []omnifocus.Task `json:"backlog"`
 	Ready      []omnifocus.Task `json:"ready"`
 	InProgress []omnifocus.Task `json:"inprogress"`
-	Done       []omnifocus.Task `json:"done"`
 }
 
 // cache holds the last fetched board and a map of task ID -> column tag,
@@ -126,8 +125,7 @@ func main() {
 	}
 }
 
-// isMovableColumn returns true for the three columns tasks can be moved between.
-// Done is intentionally excluded — complete tasks in OmniFocus, don't move them here.
+// isMovableColumn returns true for the valid kanban columns.
 func isMovableColumn(col string) bool {
 	return col == omnifocus.TagBacklog ||
 		col == omnifocus.TagReady ||
@@ -166,15 +164,6 @@ func fetchBoard() (boardResponse, map[string]string, error) {
 	board.InProgress = inprogress
 	for _, t := range inprogress {
 		taskCol[t.ID] = omnifocus.TagInProgress
-	}
-
-	done, err := omnifocus.TasksForTag(omnifocus.TagDone)
-	if err != nil {
-		return board, nil, err
-	}
-	board.Done = done
-	for _, t := range done {
-		taskCol[t.ID] = omnifocus.TagDone
 	}
 
 	return board, taskCol, nil

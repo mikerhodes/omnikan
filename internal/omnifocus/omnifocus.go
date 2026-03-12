@@ -12,12 +12,11 @@ var (
 	jxa embed.FS
 )
 
-// Tags for the four Kanban columns.
+// Tags for the three Kanban columns.
 const (
 	TagBacklog    = "backlog"
 	TagReady      = "ready"
 	TagInProgress = "inprogress"
-	TagDone       = "done"
 )
 
 // Task represents a task from OmniFocus.
