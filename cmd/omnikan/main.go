@@ -73,6 +73,15 @@ func main() {
 	// Return the cached board as JSON
 	mux.HandleFunc("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+
+		if r.URL.Query().Get("force") == "true" {
+			if err := refreshCache(); err != nil {
+				http.Error(w, "failed to refresh board", http.StatusInternalServerError)
+				log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
+				return
+			}
+		}
+
 		cache.mu.Lock()
 		board := cache.board
 		cache.mu.Unlock()

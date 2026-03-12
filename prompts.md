@@ -139,3 +139,11 @@ nice. The notes text should be smaller than the title.
 # UX updates
 
 A bunch of prompts for tweaking UX.
+
+Warm up the colours in the UX.
+
+Add a refresh button.
+
+Make the buttons look all buttony. Apply a similar style to the notes.
+
+Add the hotkey for adding Omnifocus tasks.
