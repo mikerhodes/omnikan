@@ -350,6 +350,19 @@ if (matchingTags.length === 0) {
 
 `doc.tags` is top-level tags only. Use `doc.flattenedTags` for lookups.
 
+The ` : ` separator in tag names (e.g. `"kanban : backlog"`) creates a
+visual parent/child grouping in OmniFocus's UI, but `flattenedTags()`
+returns the children by their short leaf name (`"backlog"`), not the
+full path. Confirmed by listing all tags:
+
+```js
+doc.flattenedTags().map(function(t) { return t.name() })
+// ["kanban", "backlog", "ready", "inprogress", "done", ...]
+```
+
+So when querying by name, use the leaf name: `whose({ name: "backlog" })`,
+not `whose({ name: "kanban : backlog" })`.
+
 ### Create a tag if it doesn't exist
 
 ```js
@@ -452,6 +465,18 @@ handles repeating tasks correctly.
 var task = doc.flattenedTasks.whose({ id: taskId })[0]
 app.markComplete(task)
 ```
+
+### Undo a completion (mark incomplete)
+
+`app.markIncomplete()` reverses a completion. Confirmed working in testing.
+
+```js
+var task = doc.flattenedTasks.whose({ id: taskId })[0]
+app.markIncomplete(task)
+```
+
+Note: completed tasks are still returned by `flattenedTasks.whose({ id: ... })`,
+so you can look them up by ID and un-complete them immediately after completion.
 
 ### Drop a task (soft delete)
 
@@ -594,6 +619,7 @@ JSON.stringify(matches)
 | Add tag to task | `app.add(ofTag, { to: task.tags })` |
 | Remove tag from task | `app.remove(ofTag, { from: task.tags })` |
 | Complete task | `app.markComplete(task)` |
+| Undo completion | `app.markIncomplete(task)` |
 | Drop task | `app.markDropped(task)` |
 | Delete task | `app.delete(task)` |
 | Set due date | `task.dueDate = new Date(2026, 2, 20)` (month 0-indexed) |
