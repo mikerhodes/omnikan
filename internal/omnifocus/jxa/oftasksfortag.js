@@ -24,11 +24,8 @@ if (matchingTags.length === 0) {
 } else {
     var ofTag = matchingTags()[0]
 
-    var tasks = ofDoc.flattenedTasks()
+    var tasks = ofTag.tasks()
         .filter(function(t) { return t.completed() === false })
-        .filter(function(t) {
-            return t.tags().some(function(tag) { return tag.id() === ofTag.id() })
-        })
         .map(function(t) { return { id: t.id(), name: t.name() } })
 
     JSON.stringify(tasks)
