@@ -102,3 +102,14 @@ fires an event. The item should grey out when checked but remain in place for 60
 user can uncheck the checkbox in case they made a mistake.
 
 > Claude wrote several JXA scripts to test marking done
+
+# focus in progress
+
+❯ Make the in-progress column wider to highlight it. 25%, 25%, 50%.
+
+❯ Also slightly fade the text in the non-in-progress columns.
+
+❯ No, don't decrease the opacity. Just make the text itself slightly grey. Like #666 or
+something.
+
+❯ Fade the heading text and count blob a bit too
