@@ -30,6 +30,28 @@ type tagQuery struct {
 	Tag string `json:"tag"`
 }
 
+type swapTagArgs struct {
+	ID     string `json:"id"`
+	OldTag string `json:"oldTag"`
+	NewTag string `json:"newTag"`
+}
+
+// SwapTag removes oldTag from a task and adds newTag.
+func SwapTag(id, oldTag, newTag string) error {
+	jsCode, _ := jxa.ReadFile("jxa/ofswaptag.js")
+	args, _ := json.Marshal(swapTagArgs{ID: id, OldTag: oldTag, NewTag: newTag})
+
+	log.Printf("omnifocus: swapping tag %q -> %q on task %q", oldTag, newTag, id)
+	start := time.Now()
+	_, err := executeScript(jsCode, args)
+	if err != nil {
+		log.Printf("omnifocus: swap tag error after %s: %v", time.Since(start), err)
+		return err
+	}
+	log.Printf("omnifocus: swap tag done in %s", time.Since(start))
+	return nil
+}
+
 // TasksForTag returns all incomplete OmniFocus tasks that have the given tag.
 func TasksForTag(tag string) ([]Task, error) {
 	jsCode, _ := jxa.ReadFile("jxa/oftasksfortag.js")

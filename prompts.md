@@ -1,4 +1,3 @@
-
 # 1
 
 Using the code at https://github.com/mikerhodes/github-to-omnifocus as an example, plan
@@ -32,3 +31,46 @@ now rather than config.
 
 Add logging around the code that gets tasks from omnifocus. Add standard log line for
 http requests
+
+# 3
+
+Why does the code take so long to read the items, it's taking 20+ seconds per tag.
+
+> Claude thought about this and suggested why, but said it wasn't sure on the syntax. It suggested a couple of alternatives.
+
+Try both of them out. Write small JS scripts and run them to see which is faster. Use
+the current approach as a baseline. Show me how they compare.
+
+> Claude figured a few JS files and benchmarked.
+
+Implement the fastest.
+
+# 4
+
+> I wanted to add and remove tags, but we were not sure how
+
+Write a script that adds a task to the inbox, then tries to
+add a tag. Pause to let me check the task exists. Then we can write a script to swap the
+tag.
+
+Use the existing "test" tag.
+
+> Claude wrote a new script, tried creating a task with a tag, asked me, and wrote a script to change it. Then we updated the JXA notes file.
+
+# Add moving tasks
+
+Can you write a script to list the tags, I want to see what they look like. Output them
+here.
+
+> With this we could see the tags in play. Mutually-exclusive tags are a bit odd.
+
+Okay. Let's write the code to allow us to move between the backlog, ready, and
+inprogress columns/tags.
+
+1. Update the Go code so that it's got a cache of the tasks in memory.
+2. Add an endpoint to the Go app that accepts the task ID and the new column/tag.
+3. The endpoint needs to move the item. Use the code we just used to swap out tags to
+write a new JXA script that will swap the tag. The in-memory cache of the tasks will say
+what the old tag was.
+4. Add code to the HTML page to allow moving the items between columns.
+5. Wire up the HTML code to the new backend to update the tags.

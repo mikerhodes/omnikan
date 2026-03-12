@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/mikerhodes/omnikan/internal/omnifocus"
@@ -20,6 +21,14 @@ type boardResponse struct {
 	Ready      []omnifocus.Task `json:"ready"`
 	InProgress []omnifocus.Task `json:"inprogress"`
 	Done       []omnifocus.Task `json:"done"`
+}
+
+// cache holds the last fetched board and a map of task ID -> column tag,
+// used to look up a task's current tag when moving it.
+var cache struct {
+	mu      sync.Mutex
+	board   boardResponse
+	taskCol map[string]string // task ID -> tag name
 }
 
 func main() {
@@ -39,19 +48,75 @@ func main() {
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
 	})
 
-	// Serve board data as JSON
+	// Fetch board from OmniFocus, update cache, return JSON
 	mux.HandleFunc("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		board, err := fetchBoard()
+		board, taskCol, err := fetchBoard()
 		if err != nil {
 			log.Printf("fetchBoard error: %v", err)
 			http.Error(w, "failed to fetch board", http.StatusInternalServerError)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 			return
 		}
+		cache.mu.Lock()
+		cache.board = board
+		cache.taskCol = taskCol
+		cache.mu.Unlock()
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(board) //nolint:errcheck
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
+	})
+
+	// Move a task to a new column by swapping its kanban tag
+	mux.HandleFunc("POST /api/move", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+
+		var req struct {
+			ID     string `json:"id"`
+			NewCol string `json:"newCol"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
+			return
+		}
+
+		if !isMovableColumn(req.NewCol) {
+			http.Error(w, "invalid column", http.StatusBadRequest)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
+			return
+		}
+
+		cache.mu.Lock()
+		oldCol, ok := cache.taskCol[req.ID]
+		cache.mu.Unlock()
+
+		if !ok {
+			http.Error(w, "task not found in cache", http.StatusNotFound)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNotFound, time.Since(start))
+			return
+		}
+		if oldCol == req.NewCol {
+			w.WriteHeader(http.StatusNoContent)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
+			return
+		}
+
+		if err := omnifocus.SwapTag(req.ID, oldCol, req.NewCol); err != nil {
+			log.Printf("SwapTag error: %v", err)
+			http.Error(w, "failed to move task", http.StatusInternalServerError)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
+			return
+		}
+
+		// Update cache immediately so a quick re-fetch is consistent
+		cache.mu.Lock()
+		cache.taskCol[req.ID] = req.NewCol
+		cache.mu.Unlock()
+
+		w.WriteHeader(http.StatusNoContent)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	})
 
 	addr := ":8080"
@@ -61,34 +126,56 @@ func main() {
 	}
 }
 
+// isMovableColumn returns true for the three columns tasks can be moved between.
+// Done is intentionally excluded — complete tasks in OmniFocus, don't move them here.
+func isMovableColumn(col string) bool {
+	return col == omnifocus.TagBacklog ||
+		col == omnifocus.TagReady ||
+		col == omnifocus.TagInProgress
+}
+
 // fetchBoard retrieves tasks for all four Kanban columns from OmniFocus.
 // Calls are sequential because the OmniFocus scripting bridge is not re-entrant.
-func fetchBoard() (boardResponse, error) {
+// Returns the board and a map of task ID -> column tag for cache use.
+func fetchBoard() (boardResponse, map[string]string, error) {
 	var board boardResponse
+	taskCol := map[string]string{}
 
 	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog)
 	if err != nil {
-		return board, err
+		return board, nil, err
 	}
 	board.Backlog = backlog
+	for _, t := range backlog {
+		taskCol[t.ID] = omnifocus.TagBacklog
+	}
 
 	ready, err := omnifocus.TasksForTag(omnifocus.TagReady)
 	if err != nil {
-		return board, err
+		return board, nil, err
 	}
 	board.Ready = ready
+	for _, t := range ready {
+		taskCol[t.ID] = omnifocus.TagReady
+	}
 
 	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress)
 	if err != nil {
-		return board, err
+		return board, nil, err
 	}
 	board.InProgress = inprogress
+	for _, t := range inprogress {
+		taskCol[t.ID] = omnifocus.TagInProgress
+	}
 
 	done, err := omnifocus.TasksForTag(omnifocus.TagDone)
 	if err != nil {
-		return board, err
+		return board, nil, err
 	}
 	board.Done = done
+	for _, t := range done {
+		taskCol[t.ID] = omnifocus.TagDone
+	}
 
-	return board, nil
+	return board, taskCol, nil
 }

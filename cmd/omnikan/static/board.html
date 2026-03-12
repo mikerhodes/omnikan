@@ -70,6 +70,30 @@
 
     .card:last-child { margin-bottom: 0; }
 
+    .card-title {
+      margin-bottom: 6px;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .move-btn {
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border: 1px solid #ddd;
+      border-radius: 3px;
+      background: #f5f5f5;
+      color: #555;
+      cursor: pointer;
+      line-height: 1.6;
+    }
+
+    .move-btn:hover { background: #e8e8e8; border-color: #bbb; }
+    .move-btn:disabled { opacity: 0.4; cursor: default; }
+
     .empty {
       font-size: 0.8rem;
       color: #999;
@@ -115,19 +139,56 @@
 
   <script>
     const COLUMNS = ["backlog", "ready", "inprogress", "done"];
+    const COLUMN_LABELS = { backlog: "Backlog", ready: "Ready", inprogress: "In Progress", done: "Done" };
+    // Columns a card can be moved to (done is excluded — complete in OmniFocus)
+    const MOVABLE = ["backlog", "ready", "inprogress"];
     const REFRESH_MS = 600000;
 
-    function renderColumn(key, tasks) {
-      const cards = document.getElementById("cards-" + key);
-      const count = document.getElementById("cnt-" + key);
+    function renderColumn(col, tasks) {
+      const cards = document.getElementById("cards-" + col);
+      const count = document.getElementById("cnt-" + col);
       count.textContent = tasks.length;
       if (tasks.length === 0) {
         cards.innerHTML = '<div class="empty">No tasks</div>';
         return;
       }
-      cards.innerHTML = tasks
-        .map(t => '<div class="card">' + escapeHtml(t.name) + '</div>')
+      cards.innerHTML = tasks.map(function(t) { return cardHtml(t, col); }).join("");
+    }
+
+    function cardHtml(task, currentCol) {
+      var btns = MOVABLE
+        .filter(function(col) { return col !== currentCol; })
+        .map(function(col) {
+          return '<button class="move-btn" onclick="moveTask(\'' + task.id + '\',\'' + col + '\',this)">'
+            + COLUMN_LABELS[col] + '</button>';
+        })
         .join("");
+      return '<div class="card">'
+        + '<div class="card-title">' + escapeHtml(task.name) + '</div>'
+        + '<div class="card-actions">' + btns + '</div>'
+        + '</div>';
+    }
+
+    function moveTask(id, newCol, btn) {
+      // Disable all buttons on the card while the request is in flight
+      var card = btn.closest(".card");
+      var buttons = card.querySelectorAll(".move-btn");
+      buttons.forEach(function(b) { b.disabled = true; });
+
+      fetch("/api/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: id, newCol: newCol })
+      })
+        .then(function(r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          // Reload the board to reflect the move
+          loadBoard();
+        })
+        .catch(function(err) {
+          setError("Failed to move task: " + err.message);
+          buttons.forEach(function(b) { b.disabled = false; });
+        });
     }
 
     function escapeHtml(str) {
