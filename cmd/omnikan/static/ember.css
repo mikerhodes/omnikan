@@ -1,0 +1,711 @@
+/*
+ * Ember Design System — Component CSS
+ *
+ * Variable reference (all values come from a theme file — never hardcode hex):
+ *
+ * Accent
+ * --accent:             Primary action colour: links, active nav, checkbox fill, count badge
+ * --accent-hover:       Darkened accent for hover states
+ * --accent-dark:        Darker accent for text on light surfaces and button borders
+ * --accent-dark-hover:  Darkened accent-dark for hover on button borders
+ *
+ * Backgrounds
+ * --page-bg:            Outermost body background
+ * --container-bg:       Default panel and column background — slightly darker than page
+ * --focus-container-bg: Active or highlighted panel — warmer/deeper than container-bg
+ * --surface-bg:         Raised elements: cards, buttons, kbd — lightest surface in light themes
+ *
+ * Text
+ * --text-active:        All readable body text, card titles, nav links
+ * --text-secondary:     Notes, captions, all-caps section and panel headers
+ * --text-muted:         De-emphasised items: timestamps, completed items
+ * --ui-chrome:          Status lines, shortcut hints — the quietest readable text
+ *
+ * Semantic colours
+ * --error:              Error messages and error callout border/title
+ * --warning:            Warning callout border and title
+ * --success:            Success callout border and title
+ * --info:               Info callout border and title
+ *
+ * Borders
+ * --surface-border:     Top and side borders on raised elements (cards, buttons, kbd)
+ * --surface-bottom:     Thick bottom border on raised elements — shadow edge in light, highlight edge in dark
+ * --drag-outline:       Drop-target outline — typically matches accent
+ *
+ * Chrome (sidebar and header)
+ * --sidebar-bg:         Sidebar background
+ * --sidebar-text:       Sidebar text and nav link colour
+ * --sidebar-border:     Sidebar right border and dividers
+ * --header-bg:          Page header background
+ * --header-text:        Page header text colour
+ * --header-border:      Page header bottom border
+ */
+
+/* =====================================================================
+   COMPONENT CSS — canonical patterns for common components.
+   Copy what you need; class names are suggestions not requirements.
+   ===================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--page-bg);
+  color: var(--text-active);
+  font-size: 0.875rem;
+  line-height: 1.5;
+  display: flex;
+  min-height: 100vh;
+}
+
+/* --- Sidebar --- */
+
+/* Uses --sidebar-* variables so it can differ from the content area.
+   Always set color explicitly on <a> tags — they don't inherit from body. */
+.sidebar {
+  width: 200px;
+  min-width: 200px;
+  background: var(--sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0 16px;
+  border-right: 1px solid var(--sidebar-border);
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  overflow-y: auto;
+}
+
+.sidebar-appname {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--sidebar-text);
+  padding: 0 16px 20px;
+  letter-spacing: -0.01em;
+}
+
+/* Section labels within the sidebar use opacity rather than a separate
+   variable — keeps the label visually subordinate on any background colour. */
+.sidebar-section-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--sidebar-text);
+  opacity: 0.5;
+  padding: 0 16px 6px;
+  margin-top: 16px;
+}
+
+.sidebar-nav {
+  list-style: none;
+  flex: 1;
+}
+
+.sidebar-nav li a {
+  display: block;
+  padding: 6px 16px;
+  color: var(--sidebar-text);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+  transition: color 0.1s;
+}
+
+.sidebar-nav li a.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--focus-container-bg);
+  font-weight: 500;
+}
+
+.sidebar-divider {
+  border: none;
+  border-top: 1px solid var(--sidebar-border);
+  margin: 12px 16px;
+}
+
+/* Shortcut hint uses opacity rather than --ui-chrome because it sits on
+   the sidebar background which may be dark or light depending on theme. */
+.sidebar-shortcut-hint {
+  padding: 12px 16px 0;
+  font-size: 0.72rem;
+  color: var(--sidebar-text);
+  opacity: 0.5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Page header --- */
+
+/* Uses --header-* variables. Grid layout with equal outer columns keeps
+   the centre element truly centred regardless of content width on either side. */
+.page-header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  padding: 10px 28px;
+  border-bottom: 1px solid var(--header-border);
+  background: var(--header-bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.page-header-left,
+.status-text {
+  font-size: 0.75rem;
+  color: var(--header-text);
+  opacity: 0.7;
+}
+
+.page-header-left a {
+  color: var(--header-text);
+  text-decoration: none;
+  opacity: 0.7;
+}
+
+.page-header-left a:hover { opacity: 1; }
+
+.page-header-left h1 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.page-header-right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 12px;
+}
+
+/* --- Section labels --- */
+
+.section-label,
+.panel-title,
+.type-block .section-header-demo {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.section-label { margin-bottom: 12px; }
+
+/* --- Buttons ---
+   Raised with thick bottom border — feel like physical keys.
+   Never use box-shadow for depth here. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-bottom: 3px solid var(--surface-bottom);
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--accent-dark);
+  cursor: pointer;
+  text-decoration: none;
+  font-weight: 500;
+  line-height: 1.4;
+  user-select: none;
+}
+
+.btn:hover { color: var(--accent); }
+
+/* Pressed state: collapse bottom border and shift down to simulate key travel. */
+.btn:active,
+.btn.pressed {
+  border-bottom-width: 1px;
+  transform: translateY(2px);
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+  border-bottom-color: var(--accent-dark);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-dark-hover);
+  border-bottom-color: var(--accent-dark-hover);
+  color: #fff;
+}
+
+/* --- Panels ---
+   Flat trays — background colour only, no border. Panels hold cards;
+   they should not compete with the raised elements inside them. */
+.panel {
+  background: var(--container-bg);
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.panel.active { background: var(--focus-container-bg); }
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.panel.active .panel-title { color: var(--accent); }
+
+/* Badge: inactive uses --surface-border so it adapts to any theme.
+   Active (inside an active panel) uses the accent. */
+.badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--surface-border);
+  color: var(--text-muted);
+}
+
+.panel.active .badge {
+  background: var(--accent);
+  color: #fff;
+}
+
+.panel-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* --- Cards ---
+   Raised surface treatment. --surface-bg is always lighter than
+   --container-bg (even in dark themes) so cards lift off the panel. */
+.card {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-bottom: 3px solid var(--surface-bottom);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-title { line-height: 1.4; }
+
+/* Card note: secondary text aligned with the title (checkbox width + gap). */
+.card-note {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+  margin-left: 26px;
+}
+
+/* --- Detail card --- */
+.detail-card {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-bottom: 3px solid var(--surface-bottom);
+  border-radius: 6px;
+  padding: 20px 24px;
+  max-width: 640px;
+}
+
+.detail-card h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.detail-card p {
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+
+.detail-card a,
+.type-block a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.detail-card a:hover,
+.type-block a:hover { text-decoration: underline; }
+
+.detail-secondary {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--surface-border);
+}
+
+/* --- Errors ---
+   Appear inline adjacent to the element they relate to, not in a modal
+   or at the top of the page. */
+.error-message {
+  font-size: 0.8125rem;
+  color: var(--error);
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* --- Checkboxes ---
+   Fully custom so they match the surface style and use the accent.
+   The tick is drawn with a pseudo-element. */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid var(--surface-border);
+  border-bottom: 2px solid var(--surface-bottom);
+  border-radius: 4px;
+  background: var(--surface-bg);
+  cursor: pointer;
+  position: relative;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+  border-bottom-color: var(--accent-dark);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: 2px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(40deg);
+}
+
+.checkbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Completed items: use --ui-chrome (quieter than --text-muted) with
+   strikethrough to signal done-and-dismissed. */
+.checkbox-item.checked-item {
+  text-decoration: line-through;
+  color: var(--ui-chrome);
+}
+
+/* --- kbd ---
+   Same raised treatment as buttons and cards — physical keycap feel. */
+kbd {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-bottom: 3px solid var(--surface-bottom);
+  border-radius: 5px;
+  padding: 2px 8px;
+  font-family: monospace;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.shortcut-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  align-items: center;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8125rem;
+  color: var(--ui-chrome);
+}
+
+/* --- Form inputs ---
+   FLAT — single border, no thick bottom edge. Inputs receive content;
+   they should feel recessed, not raised. Contrast with .btn alongside them. */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Form labels use the all-caps section header style. */
+.form-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+/* Flat border only — no border-bottom thickness. */
+.form-input,
+.form-textarea {
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 5px;
+  padding: 7px 10px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--text-active);
+  width: 100%;
+}
+
+/* Focus: switch border to accent — no outline, no glow, no box-shadow. */
+.form-input:focus,
+.form-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  border-bottom-color: var(--accent-dark);
+}
+
+.form-textarea {
+  resize: vertical;
+  min-height: 80px;
+  line-height: 1.5;
+}
+
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* --- Type block (text style reference only) --- */
+.type-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.type-block h1 {
+  font-family: monospace;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.type-block .body-text { line-height: 1.6; }
+
+.type-block .secondary-text {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.type-block .muted-text {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.type-block .chrome-text {
+  font-size: 0.75rem;
+  color: var(--ui-chrome);
+}
+
+.type-block .error-text {
+  font-size: 0.8125rem;
+  color: var(--error);
+}
+
+/* --- Callouts ---
+   Left border only — no background tint, no raised treatment.
+   Callouts display information; they are not interactive.
+   Border colour signals semantic meaning: info/success/warning/error. */
+.callout {
+  border-left: 4px solid var(--surface-border);
+  padding: 10px 14px;
+  font-size: 0.8125rem;
+  color: var(--text-active);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.callout-title {
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.callout-info    { border-left-color: var(--info); }
+.callout-success { border-left-color: var(--success); }
+.callout-warning { border-left-color: var(--warning); }
+.callout-error   { border-left-color: var(--error); }
+
+.callout-info    .callout-title { color: var(--info); }
+.callout-success .callout-title { color: var(--success); }
+.callout-warning .callout-title { color: var(--warning); }
+.callout-error   .callout-title { color: var(--error); }
+
+.callout-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 480px;
+}
+
+/* --- Chips / tag pills ---
+   Raised like buttons — they invite clicking. Active chip uses --accent. */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface-bg);
+  border: 1px solid var(--surface-border);
+  border-bottom: 3px solid var(--surface-bottom);
+  border-radius: 99px;
+  padding: 3px 12px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--accent-dark);
+  cursor: pointer;
+  user-select: none;
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+  border-bottom-color: var(--accent-dark);
+  color: #fff;
+}
+
+/* --- Table ---
+   Rows are flat — no raised treatment. Dividers use --surface-border.
+   Use .ref-table inside a .table-container. */
+
+/* --- Empty state ---
+   Flat panel content — muted text centred, no raised surfaces. */
+.empty-state {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.empty-state-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+/* --- Drag-over panel state ---
+   Accent outline signals a valid drop target. No box-shadow. */
+.panel.drag-over {
+  background: var(--focus-container-bg);
+  outline: 2px solid var(--drag-outline);
+  outline-offset: -1px;
+}
+
+/* --- Reference table (demo scaffold) ---
+   Used to explain variable relationships. Not a system component. */
+.ref-table {
+  font-size: 0.8125rem;
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 560px;
+}
+
+.ref-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  padding: 0 12px 8px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.ref-table td {
+  padding: 6px 12px;
+  color: var(--text-active);
+  border-bottom: 1px solid var(--surface-border);
+  font-family: monospace;
+  font-size: 0.75rem;
+}
+
+.ref-table tr:last-child td { border-bottom: none; }
+
+.ref-table td:first-child { color: var(--text-secondary); font-family: inherit; }
+
+/* Table container: flat border, no border-bottom thickness.
+   The table holds data — it should not look pressable. */
+.table-container {
+  border: 1px solid var(--surface-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* --- Raised vs flat comparison row --- */
+.compare-row {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.compare-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compare-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+}
+
+.compare-items {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stat-block {
+  font-size: 0.8125rem;
+  color: var(--text-active);
+  padding: 6px 10px;
+  background: var(--page-bg);
+  border: 1px solid var(--surface-border);
+  border-radius: 5px;
+}
+
+/* =====================================================================
+   END COMPONENT CSS
+   ===================================================================== */

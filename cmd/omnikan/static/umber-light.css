@@ -1,0 +1,31 @@
+:root {
+  --accent:            #c4622d;
+  --accent-hover:      #a84f22;
+  --accent-dark:       #5a4030;
+  --accent-dark-hover: #3a2010;
+  --page-bg:           #f7f3ee;
+  --container-bg:      #ede8e0;
+  --focus-container-bg:#e8ddd4;
+  --surface-bg:        #fdfcfa;
+  --text-active:       #3a2e24;
+  --text-secondary:    #8a7060;
+  --text-muted:        #a89888;
+  --ui-chrome:         #b8a898;
+  --error:             #c0392b;
+  --warning:           #c48a1a;
+  --success:           #6a9a5a;
+  --info:              #2980b9;
+  --surface-border:    #ccc4b8;
+  --surface-bottom:    #b8b0a4;
+  --drag-outline:      #c4622d;
+  /* Chrome variables control sidebar and header independently.
+     In light themes they typically match --container-bg / --page-bg.
+     In themes like Corporate Blues the sidebar goes dark while the
+     content area stays light — only these variables change. */
+  --sidebar-bg:        #ede8e0;
+  --sidebar-text:      #3a2e24;
+  --sidebar-border:    #ccc4b8;
+  --header-bg:         #f7f3ee;
+  --header-text:       #3a2e24;
+  --header-border:     #ccc4b8;
+}

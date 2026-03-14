@@ -70,6 +70,8 @@ func main() {
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
 	})
 
+	mux.Handle("GET /static/", http.FileServerFS(static))
+
 	// Return the cached board as JSON
 	mux.HandleFunc("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()

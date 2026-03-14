@@ -4,17 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kanban</title>
+  <link rel="stylesheet" href="/static/ember.css">
+  <link rel="stylesheet" href="/static/umber-light.css" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="/static/umber-dark.css"  media="(prefers-color-scheme: dark)">
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      height: 100%;
-    }
-
     body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f7f3ee;
-      display: flex;
       flex-direction: column;
       padding: 24px;
     }
@@ -26,11 +20,11 @@
       margin-bottom: 20px;
     }
 
-    h1 {
+    header h1 {
       font-family: monospace;
       font-size: 1.25rem;
       font-weight: 600;
-      color: #c4622d;
+      color: var(--accent);
     }
 
     #board {
@@ -41,10 +35,7 @@
     }
 
     .column {
-      flex: 1;  /* default: 25% each */
-      background: #ede8e0;
-      border-radius: 4px;
-      padding: 12px;
+      flex: 1;
       min-width: 0;
       display: flex;
       flex-direction: column;
@@ -55,74 +46,42 @@
       overflow-y: auto;
       flex: 1;
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
 
     .column.drag-over {
-      background: #e0d8ce;
-      border-color: #c4622d;
-      outline: 2px solid #c4622d;
+      background: var(--focus-container-bg);
+      outline: 2px solid var(--drag-outline);
       outline-offset: -1px;
     }
 
-    #col-inprogress.drag-over {
-      background: #d8cfc4;
-    }
-
     .column-header {
-      font-size: 0.75rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #b8a898;
       margin-bottom: 10px;
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    .column-header .count {
-      background: #d8d0c8;
-      border-radius: 10px;
-      padding: 1px 7px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: #a89888;
-    }
-
-    #col-inprogress { background: #e8ddd4; }
-    #col-inprogress .column-header { color: #c4622d; }
-    #col-inprogress .column-header .count { background: #c4622d; color: #fff; }
-
     .card {
-      background: #fdfcfa;
-      border-radius: 6px;
-      border: 1px solid #ccc4b8;
-      border-bottom: 3px solid #b8b0a4;
-      padding: 10px 12px;
-      margin-bottom: 8px;
-      font-size: 0.875rem;
-      color: #a89888;
-      box-shadow: none;
-      line-height: 1.4;
-      word-break: break-word;
       cursor: grab;
       display: flex;
       align-items: flex-start;
       gap: 8px;
+      color: var(--text-muted);
+      word-break: break-word;
     }
 
-    .card:last-child { margin-bottom: 0; }
     .card.dragging { opacity: 0.4; cursor: grabbing; }
 
-    #col-inprogress .card { color: #3a2e24; }
+    .column.active .card { color: var(--text-active); }
 
-    .card.done {
-      opacity: 0.45;
-    }
+    .card.done { opacity: 0.45; }
 
     .card.done .card-name {
       text-decoration: line-through;
-      color: #999;
+      color: var(--ui-chrome);
     }
 
     .card-body {
@@ -130,39 +89,31 @@
       min-width: 0;
     }
 
-    .card-name {
-      line-height: 1.4;
-    }
+    .card-name { line-height: 1.4; }
 
     .card-note {
       margin-top: 4px;
+      margin-left: 0;
       font-size: 0.75rem;
-      color: #8a7060;
+      color: var(--text-secondary);
       line-height: 1.4;
       white-space: pre-wrap;
     }
 
     .card-note a {
-      color: #c4622d;
+      color: var(--accent);
       text-decoration: none;
     }
 
-    .card-note a:hover {
-      text-decoration: underline;
-    }
+    .card-note a:hover { text-decoration: underline; }
 
     .card-check {
-      flex-shrink: 0;
-      width: 16px;
-      height: 16px;
       margin-top: 1px;
-      cursor: pointer;
-      accent-color: #c4622d;
     }
 
     .empty {
       font-size: 0.8rem;
-      color: #999;
+      color: var(--text-muted);
       text-align: center;
       padding: 12px 0;
     }
@@ -176,49 +127,25 @@
 
     #status {
       font-size: 0.75rem;
-      color: #b8a898;
+      color: var(--ui-chrome);
     }
 
     #refresh-btn {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 0.75rem;
-      color: #5a4030;
-      background: #fdfcfa;
-      border: 1px solid #ccc4b8;
-      border-bottom: 3px solid #b8b0a4;
-      border-radius: 6px;
       padding: 2px 10px;
-      cursor: pointer;
       white-space: nowrap;
-    }
-
-    #refresh-btn:active {
-      border-bottom-width: 1px;
-      transform: translateY(2px);
     }
 
     .shortcut {
       font-size: 0.75rem;
-      color: #b8a898;
+      color: var(--ui-chrome);
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    kbd {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      font-size: 0.75rem;
-      color: #5a4030;
-      background: #fdfcfa;
-      border: 1px solid #ccc4b8;
-      border-radius: 5px;
-      box-shadow: 0 2px 0 #ccc4b8;
-      padding: 2px 8px;
-      white-space: nowrap;
-    }
-
     #error {
-      color: #c0392b;
+      color: var(--error);
       font-size: 0.75rem;
     }
   </style>
@@ -230,20 +157,20 @@
     <div id="status-bar">
       <div id="error"></div>
       <div id="status"></div>
-      <button id="refresh-btn" onclick="forceRefresh()">Refresh</button>
+      <button class="btn" id="refresh-btn" onclick="forceRefresh()">Refresh</button>
     </div>
   </header>
   <div id="board">
-    <div class="column" id="col-backlog">
-      <div class="column-header">Backlog <span class="count" id="cnt-backlog">0</span></div>
+    <div class="column panel" id="col-backlog">
+      <div class="column-header panel-title">Backlog <span class="badge" id="cnt-backlog">0</span></div>
       <div class="cards" id="cards-backlog"></div>
     </div>
-    <div class="column" id="col-ready">
-      <div class="column-header">Ready <span class="count" id="cnt-ready">0</span></div>
+    <div class="column panel" id="col-ready">
+      <div class="column-header panel-title">Ready <span class="badge" id="cnt-ready">0</span></div>
       <div class="cards" id="cards-ready"></div>
     </div>
-    <div class="column" id="col-inprogress" style="flex: 2">
-      <div class="column-header">In Progress <span class="count" id="cnt-inprogress">0</span></div>
+    <div class="column panel active" id="col-inprogress" style="flex: 2">
+      <div class="column-header panel-title">In Progress <span class="badge" id="cnt-inprogress">0</span></div>
       <div class="cards" id="cards-inprogress"></div>
     </div>
   </div>
