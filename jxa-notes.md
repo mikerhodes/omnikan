@@ -52,7 +52,6 @@ func executeScript(jsCode []byte, args []byte) ([]byte, error) {
 Reading args in the script:
 
 ```js
-ObjC.import('stdlib')
 var args = JSON.parse($.getenv('OSA_ARGS'))
 // args.tag, args.projectName, etc.
 ```
@@ -66,6 +65,7 @@ Make calls sequentially from Go.
 ## Boilerplate: connecting to OmniFocus
 
 ```js
+ObjC.import('stdlib')
 var app = Application("OmniFocus")
 var doc = app.defaultDocument
 ```
