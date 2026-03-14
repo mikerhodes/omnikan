@@ -27,6 +27,7 @@
     }
 
     h1 {
+      font-family: monospace;
       font-size: 1.25rem;
       font-weight: 600;
       color: #c4622d;
@@ -218,8 +219,7 @@
 
     #error {
       color: #c0392b;
-      font-size: 0.875rem;
-      margin-top: 16px;
+      font-size: 0.75rem;
     }
   </style>
 </head>
@@ -228,6 +228,7 @@
     <h1>Kanban</h1>
     <div class="shortcut">Quick entry <kbd>⌃⌥Space</kbd></div>
     <div id="status-bar">
+      <div id="error"></div>
       <div id="status"></div>
       <button id="refresh-btn" onclick="forceRefresh()">Refresh</button>
     </div>
@@ -246,7 +247,6 @@
       <div class="cards" id="cards-inprogress"></div>
     </div>
   </div>
-  <div id="error"></div>
 
   <script>
     const COLUMNS = ["backlog", "ready", "inprogress"];
