@@ -18,6 +18,9 @@ var (
 
 const boardRefreshInterval = 10 * time.Minute
 
+// projectID is resolved at startup from omnifocus.ProjectName and passed to all queries.
+var projectID string
+
 type boardResponse struct {
 	Backlog    []omnifocus.Task `json:"backlog"`
 	Ready      []omnifocus.Task `json:"ready"`
@@ -42,6 +45,13 @@ var cache struct {
 var moveMu sync.Mutex
 
 func main() {
+	id, err := omnifocus.ProjectID(omnifocus.ProjectName)
+	if err != nil {
+		log.Fatalf("project %q not found in OmniFocus: %v", omnifocus.ProjectName, err)
+	}
+	projectID = id
+	log.Printf("resolved project %q -> %s", omnifocus.ProjectName, projectID)
+
 	log.Printf("Loading board from OmniFocus...")
 	if err := refreshCache(); err != nil {
 		log.Fatalf("initial board load failed: %v", err)
@@ -294,7 +304,7 @@ func fetchBoard() (boardResponse, map[string]cachedTask, error) {
 	var board boardResponse
 	tasks := map[string]cachedTask{}
 
-	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog)
+	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog, projectID)
 	if err != nil {
 		return board, nil, err
 	}
@@ -303,7 +313,7 @@ func fetchBoard() (boardResponse, map[string]cachedTask, error) {
 		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagBacklog}
 	}
 
-	ready, err := omnifocus.TasksForTag(omnifocus.TagReady)
+	ready, err := omnifocus.TasksForTag(omnifocus.TagReady, projectID)
 	if err != nil {
 		return board, nil, err
 	}
@@ -312,7 +322,7 @@ func fetchBoard() (boardResponse, map[string]cachedTask, error) {
 		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagReady}
 	}
 
-	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress)
+	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress, projectID)
 	if err != nil {
 		return board, nil, err
 	}

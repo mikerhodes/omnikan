@@ -12,6 +12,9 @@ var (
 	jxa embed.FS
 )
 
+// ProjectName is the OmniFocus project tasks must belong to.
+const ProjectName = "🤘Cloudant Next"
+
 // Tags for the three Kanban columns.
 const (
 	TagBacklog    = "backlog"
@@ -26,8 +29,17 @@ type Task struct {
 	Note string `json:"note"`
 }
 
+type projectNameQuery struct {
+	ProjectName string `json:"projectName"`
+}
+
+type projectIDResult struct {
+	ID string `json:"id"`
+}
+
 type tagQuery struct {
-	Tag string `json:"tag"`
+	Tag       string `json:"tag"`
+	ProjectID string `json:"projectId"`
 }
 
 type swapTagArgs struct {
@@ -88,12 +100,33 @@ func SwapTag(id, oldTag, newTag string) error {
 	return nil
 }
 
-// TasksForTag returns all incomplete OmniFocus tasks that have the given tag.
-func TasksForTag(tag string) ([]Task, error) {
-	jsCode, _ := jxa.ReadFile("jxa/oftasksfortag.js")
-	args, _ := json.Marshal(tagQuery{Tag: tag})
+// ProjectID looks up the OmniFocus ID for a project by name.
+func ProjectID(projectName string) (string, error) {
+	jsCode, _ := jxa.ReadFile("jxa/ofprojectid.js")
+	args, _ := json.Marshal(projectNameQuery{ProjectName: projectName})
 
-	log.Printf("omnifocus: querying tag %q", tag)
+	log.Printf("omnifocus: looking up project %q", projectName)
+	start := time.Now()
+	out, err := executeScript(jsCode, args)
+	if err != nil {
+		log.Printf("omnifocus: project lookup error after %s: %v", time.Since(start), err)
+		return "", err
+	}
+	log.Printf("omnifocus: project lookup done in %s", time.Since(start))
+
+	var result projectIDResult
+	if err := json.Unmarshal(out, &result); err != nil {
+		return "", err
+	}
+	return result.ID, nil
+}
+
+// TasksForTag returns all incomplete tasks in the given project that have the given tag.
+func TasksForTag(tag, projectID string) ([]Task, error) {
+	jsCode, _ := jxa.ReadFile("jxa/oftasksfortag.js")
+	args, _ := json.Marshal(tagQuery{Tag: tag, ProjectID: projectID})
+
+	log.Printf("omnifocus: querying tag %q in project %q", tag, projectID)
 	start := time.Now()
 	out, err := executeScript(jsCode, args)
 	if err != nil {
