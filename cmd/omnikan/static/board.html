@@ -119,6 +119,16 @@
       padding: 12px 0;
     }
 
+    .section-divider {
+      font-size: 0.7rem;
+      color: var(--ui-chrome);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 6px 0 2px;
+      border-top: 1px solid var(--panel-border);
+      margin-top: 4px;
+    }
+
     #status-bar {
       display: flex;
       align-items: center;
@@ -243,6 +253,9 @@
       }
     }
 
+    var THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    var NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+
     function renderColumn(col, tasks) {
       const cards = document.getElementById("cards-" + col);
       const count = document.getElementById("cnt-" + col);
@@ -250,7 +263,24 @@
       if (tasks.length === 0) {
         cards.innerHTML = '<div class="empty">No tasks</div>';
       } else {
-        cards.innerHTML = tasks.map(function(t) { return cardHtml(t, col); }).join("");
+        var cutoff30 = new Date(Date.now() - THIRTY_DAYS_MS);
+        var cutoff90 = new Date(Date.now() - NINETY_DAYS_MS);
+        var divider30 = false;
+        var divider90 = false;
+        var html = "";
+        tasks.forEach(function(t) {
+          var added = t.added && new Date(t.added);
+          if (!divider30 && added && added < cutoff30) {
+            html += '<div class="section-divider">Older than 30 days</div>';
+            divider30 = true;
+          }
+          if (!divider90 && added && added < cutoff90) {
+            html += '<div class="section-divider">Older than 90 days</div>';
+            divider90 = true;
+          }
+          html += cardHtml(t, col);
+        });
+        cards.innerHTML = html;
       }
 
       var col_el = document.getElementById("col-" + col);

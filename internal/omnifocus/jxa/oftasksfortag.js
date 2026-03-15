@@ -29,7 +29,7 @@ var script = `
         }
         return t.containingProject && t.containingProject.id.primaryKey === ${JSON.stringify(args.projectId)};
     }).map(function(t) {
-        return { id: t.id.primaryKey, name: t.name, note: t.note };
+        return { id: t.id.primaryKey, name: t.name, note: t.note, added: t.added };
     });
     JSON.stringify(tasks);
 `;

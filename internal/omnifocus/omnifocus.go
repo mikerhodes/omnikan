@@ -4,6 +4,7 @@ import (
 	"embed"
 	"encoding/json"
 	"log"
+	"sort"
 	"time"
 )
 
@@ -24,9 +25,10 @@ const (
 
 // Task represents a task from OmniFocus.
 type Task struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Note string `json:"note"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Note  string `json:"note"`
+	Added string `json:"added"`
 }
 
 type projectNameQuery struct {
@@ -166,6 +168,10 @@ func TasksForTag(tag, projectID string) ([]Task, error) {
 	if err := json.Unmarshal(out, &tasks); err != nil {
 		return nil, err
 	}
+
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].Added > tasks[j].Added
+	})
 
 	return tasks, nil
 }

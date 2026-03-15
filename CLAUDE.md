@@ -18,7 +18,7 @@ cmd/omnikan/main.go          — HTTP server, in-memory cache, API handlers
 internal/omnifocus/
   omnifocus.go               — Go API: TasksForTag, SwapTag, MarkComplete, MarkIncomplete
   jxa.go                     — executeScript: pipes JXA to osascript via stdin, passes args via OSA_ARGS env var
-  jxa/oftasksfortag.js       — fetch tasks for a tag (uses ofTag.tasks(), ~0.35s vs flattenedTasks() ~24s)
+  jxa/oftasksfortag.js       — fetch tasks for a tag (uses evaluateJavascript()+OmniJS tagsMatching(), ~0.15s)
   jxa/ofswaptag.js           — swap one kanban tag for another
   jxa/ofmarktaskcomplete.js  — mark a task complete
   jxa/ofmarktaskincomplete.js— mark a task incomplete (undo)
