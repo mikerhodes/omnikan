@@ -112,6 +112,26 @@
       margin-top: 1px;
     }
 
+    .card-actions {
+      position: absolute;
+      top: 3px;
+      right: 3px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .card-actions .btn {
+      font-size: 0.75rem;
+      padding: 2px 10px;
+    }
+
+    .card:hover .card-actions {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .card { position: relative; }
+
     .empty {
       font-size: 0.8rem;
       color: var(--text-muted);
@@ -344,7 +364,34 @@
         + '<div class="card-name">' + escapeHtml(task.name) + '</div>'
         + note
         + '</div>'
+        + '<div class="card-actions">'
+        + '<button class="btn" title="Delete task" onclick="onDeleteTask(event,\'' + task.id + '\')">Delete</button>'
+        + '</div>'
         + '</div>';
+    }
+
+    function onDeleteTask(e, id) {
+      e.stopPropagation();
+      var card = e.target.closest(".card");
+      card.remove();
+      updateColumnCounts();
+      cleanEmptyPlaceholders();
+
+      incPending();
+      fetch("/api/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: id })
+      })
+        .then(function(r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          decPending();
+        })
+        .catch(function(err) {
+          decPending();
+          setError("Failed to delete task: " + err.message);
+          loadBoard();
+        });
     }
 
     function onCheckChange(e, id) {

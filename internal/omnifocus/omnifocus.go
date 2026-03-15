@@ -60,6 +60,22 @@ type addTaskArgs struct {
 	ProjectID string `json:"projectId"`
 }
 
+// DeleteTask permanently deletes a task from OmniFocus.
+func DeleteTask(id string) error {
+	jsCode, _ := jxa.ReadFile("jxa/ofdeletetask.js")
+	args, _ := json.Marshal(taskIDArgs{ID: id})
+
+	log.Printf("omnifocus: deleting task %q", id)
+	start := time.Now()
+	_, err := executeScript(jsCode, args)
+	if err != nil {
+		log.Printf("omnifocus: delete task error after %s: %v", time.Since(start), err)
+		return err
+	}
+	log.Printf("omnifocus: delete task done in %s", time.Since(start))
+	return nil
+}
+
 // MarkComplete marks a task as complete in OmniFocus.
 func MarkComplete(id string) error {
 	jsCode, _ := jxa.ReadFile("jxa/ofmarktaskcomplete.js")

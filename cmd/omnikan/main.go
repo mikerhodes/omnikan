@@ -163,6 +163,36 @@ func main() {
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	})
 
+	// Delete a task permanently from OmniFocus
+	mux.HandleFunc("POST /api/delete", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
+			return
+		}
+		moveMu.Lock()
+		err := omnifocus.DeleteTask(req.ID)
+		if err == nil {
+			cache.mu.Lock()
+			if ct, ok := cache.tasks[req.ID]; ok {
+				cache.board = removeBoardTask(cache.board, req.ID, ct.col)
+			}
+			cache.mu.Unlock()
+		}
+		moveMu.Unlock()
+		if err != nil {
+			http.Error(w, "failed to delete task", http.StatusInternalServerError)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
+	})
+
 	// Mark a task complete in OmniFocus
 	mux.HandleFunc("POST /api/complete", func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
