@@ -11,31 +11,27 @@
 //   ...
 // ]
 //
-// Uses tag.tasks() as the starting point (fast: ~0.35s for a small tag) and
-// then filters by containingProject().id(). This is faster than starting from
-// project.tasks() and filtering by tag, because tag.tasks() already returns a
-// small set and each containingProject() call is cheap.
+// Uses evaluateJavascript() to run filtering in the OmniJS context, which avoids
+// per-property JXA bridge crossings (~1ms each). tagsMatching() + tag.tasks is
+// fast (~150ms) because it starts from a small, pre-filtered set.
 
-ObjC.import('stdlib')
-var args = JSON.parse($.getenv('OSA_ARGS'))
+ObjC.import('stdlib');
+var args = JSON.parse($.getenv('OSA_ARGS'));
 
 // @ts-ignore
-var ofApp = Application("OmniFocus")
-var ofDoc = ofApp.defaultDocument
+var ofApp = Application("OmniFocus");
 
-var matchingTags = ofDoc.flattenedTags.whose({ name: args.tag })
-if (matchingTags.length === 0) {
-    JSON.stringify([])
-} else {
-    var ofTag = matchingTags()[0]
+var script = `
+    var tag = tagsMatching(${JSON.stringify(args.tag)})[0];
+    var tasks = tag.tasks.filter(function(t) {
+        if ([Task.Status.Completed, Task.Status.Dropped].includes(t.taskStatus)) {
+            return false;
+        }
+        return t.containingProject && t.containingProject.id.primaryKey === ${JSON.stringify(args.projectId)};
+    }).map(function(t) {
+        return { id: t.id.primaryKey, name: t.name, note: t.note };
+    });
+    JSON.stringify(tasks);
+`;
 
-    var tasks = ofTag.tasks()
-        .filter(function(t) {
-            if (t.completed() || t.dropped()) return false
-            var proj = t.containingProject()
-            return proj && proj.id() === args.projectId
-        })
-        .map(function(t) { return { id: t.id(), name: t.name(), note: t.note() } })
-
-    JSON.stringify(tasks)
-}
+ofApp.evaluateJavascript(script);

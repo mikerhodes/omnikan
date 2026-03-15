@@ -154,6 +154,7 @@ ask OmniFocus to hand you.
 | `flattenedTasks()` → filter all in JS | ~24s |
 | `flattenedTasks.whose({completed:false})()` → filter in JS | ~9s |
 | `ofTag.tasks()` → filter in JS | ~0.35s |
+| `evaluateJavascript()` with `tagsMatching().tasks` → filter in OmniJS | ~0.15s |
 
 ### The slow anti-pattern: fetching everything
 
@@ -245,23 +246,32 @@ JSON.stringify(tasks)
 
 ### Tasks for a tag (fast approach)
 
+Use `evaluateJavascript()` to run the filter inside the OmniJS context.
+`tagsMatching()` is the OmniJS equivalent of `flattenedTags.whose({name:...})`.
+Properties in OmniJS are plain fields (no `()` required), and `id.primaryKey`
+gives the string ID. This avoids per-property JXA bridge crossings and runs
+~10x faster than `ofTag.tasks()` with JXA `.filter()`.
+
 ```js
-ObjC.import('stdlib')
-var args = JSON.parse($.getenv('OSA_ARGS'))   // { "tag": "backlog" }
+ObjC.import('stdlib');
+var args = JSON.parse($.getenv('OSA_ARGS'));   // { "tag": "backlog", "projectId": "abc123" }
 
-var app = Application("OmniFocus")
-var doc = app.defaultDocument
+// @ts-ignore
+var ofApp = Application("OmniFocus");
 
-var matchingTags = doc.flattenedTags.whose({ name: args.tag })
-if (matchingTags.length === 0) {
-    JSON.stringify([])
-} else {
-    var ofTag = matchingTags()[0]
-    var tasks = ofTag.tasks()
-        .filter(function(t) { return t.completed() === false && t.dropped() === false })
-        .map(function(t) { return { id: t.id(), name: t.name() } })
-    JSON.stringify(tasks)
-}
+var script = `
+JSON.stringify(tagsMatching(${JSON.stringify(args.tag)})[0].tasks.filter(
+    function(t) {
+        if ([Task.Status.Completed, Task.Status.Dropped].includes(t.taskStatus)) {
+            return false
+        }
+        return t.containingProject && t.containingProject.id.primaryKey === ${JSON.stringify(args.projectId)}
+    })
+    .map(function(t) {
+        return { id: t.id.primaryKey, name: t.name, note: t.note }
+    }))`;
+
+ofApp.evaluateJavascript(script);
 ```
 
 ### Tasks for a project with a specific tag
