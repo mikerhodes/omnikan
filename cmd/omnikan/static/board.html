@@ -148,6 +148,41 @@
       color: var(--error);
       font-size: 0.75rem;
     }
+
+    .add-task {
+      display: flex;
+      gap: 6px;
+      margin-top: 10px;
+      align-items: stretch;
+    }
+
+    .add-task textarea {
+      flex: 1;
+      resize: none;
+      height: 2.8em;
+      min-height: unset;
+    }
+
+    .add-task .add-btn {
+      width: 2.8em;
+      height: 2.8em;
+      flex-shrink: 0;
+      padding: 0;
+      justify-content: center;
+    }
+
+    .add-task.focused .add-btn {
+      background: var(--accent);
+      border-color: var(--accent-dark);
+      border-bottom-color: var(--accent-dark);
+      color: #fff;
+    }
+
+    .add-task.focused .add-btn:hover {
+      background: var(--accent-hover);
+      border-color: var(--accent-dark-hover);
+      border-bottom-color: var(--accent-dark-hover);
+    }
   </style>
 </head>
 <body>
@@ -164,14 +199,26 @@
     <div class="column panel" id="col-backlog">
       <div class="column-header panel-title">Backlog <span class="badge" id="cnt-backlog">0</span></div>
       <div class="cards" id="cards-backlog"></div>
+      <div class="add-task" id="add-backlog">
+        <textarea class="form-textarea" id="add-input-backlog" placeholder="Add task…" rows="2"></textarea>
+        <button class="btn add-btn" title="Add task">+</button>
+      </div>
     </div>
     <div class="column panel" id="col-ready">
       <div class="column-header panel-title">Ready <span class="badge" id="cnt-ready">0</span></div>
       <div class="cards" id="cards-ready"></div>
+      <div class="add-task" id="add-ready">
+        <textarea class="form-textarea" id="add-input-ready" placeholder="Add task…" rows="2"></textarea>
+        <button class="btn add-btn" title="Add task">+</button>
+      </div>
     </div>
     <div class="column panel active" id="col-inprogress" style="flex: 2">
       <div class="column-header panel-title">In Progress <span class="badge" id="cnt-inprogress">0</span></div>
       <div class="cards" id="cards-inprogress"></div>
+      <div class="add-task" id="add-inprogress">
+        <textarea class="form-textarea" id="add-input-inprogress" placeholder="Add task…" rows="2"></textarea>
+        <button class="btn add-btn" title="Add task">+</button>
+      </div>
     </div>
   </div>
 
@@ -414,6 +461,57 @@
           setError("Failed to load board: " + err.message);
         });
     }
+
+    function submitAddTask(col) {
+      var textarea = document.getElementById("add-input-" + col);
+      var name = textarea.value.trim();
+      if (!name) return;
+      textarea.value = "";
+      document.getElementById("add-" + col).classList.remove("focused");
+
+      incPending();
+      setStatus("Adding item…");
+      fetch("/api/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name, col: col })
+      })
+        .then(function(r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function(task) {
+          decPending();
+          var cardsEl = document.getElementById("cards-" + col);
+          var empty = cardsEl.querySelector(".empty");
+          if (empty) empty.remove();
+          cardsEl.insertAdjacentHTML("afterbegin", cardHtml(task, col));
+          updateColumnCounts();
+        })
+        .catch(function(err) {
+          decPending();
+          setError("Failed to add task: " + err.message);
+        });
+    }
+
+    COLUMNS.forEach(function(col) {
+      var widget = document.getElementById("add-" + col);
+      var textarea = document.getElementById("add-input-" + col);
+      var btn = widget.querySelector(".add-btn");
+
+      textarea.addEventListener("focus", function() { widget.classList.add("focused"); });
+      textarea.addEventListener("blur", function() { widget.classList.remove("focused"); });
+
+      textarea.addEventListener("keydown", function(e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          submitAddTask(col);
+        }
+      });
+      btn.addEventListener("click", function() {
+        submitAddTask(col);
+      });
+    });
 
     loadBoard();
     setInterval(loadBoard, REFRESH_MS);

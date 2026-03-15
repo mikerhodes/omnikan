@@ -52,6 +52,12 @@ type taskIDArgs struct {
 	ID string `json:"id"`
 }
 
+type addTaskArgs struct {
+	Name      string `json:"name"`
+	Tag       string `json:"tag"`
+	ProjectID string `json:"projectId"`
+}
+
 // MarkComplete marks a task as complete in OmniFocus.
 func MarkComplete(id string) error {
 	jsCode, _ := jxa.ReadFile("jxa/ofmarktaskcomplete.js")
@@ -119,6 +125,27 @@ func ProjectID(projectName string) (string, error) {
 		return "", err
 	}
 	return result.ID, nil
+}
+
+// AddTask creates a new task in the given project with the given tag.
+func AddTask(name, tag, projectID string) (Task, error) {
+	jsCode, _ := jxa.ReadFile("jxa/ofaddtask.js")
+	args, _ := json.Marshal(addTaskArgs{Name: name, Tag: tag, ProjectID: projectID})
+
+	log.Printf("omnifocus: adding task %q to tag %q in project %q", name, tag, projectID)
+	start := time.Now()
+	out, err := executeScript(jsCode, args)
+	if err != nil {
+		log.Printf("omnifocus: add task error after %s: %v", time.Since(start), err)
+		return Task{}, err
+	}
+	log.Printf("omnifocus: add task done in %s", time.Since(start))
+
+	var task Task
+	if err := json.Unmarshal(out, &task); err != nil {
+		return Task{}, err
+	}
+	return task, nil
 }
 
 // TasksForTag returns all incomplete tasks in the given project that have the given tag.

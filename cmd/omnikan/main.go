@@ -223,6 +223,46 @@ func main() {
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	})
 
+	// Add a new task to a column
+	mux.HandleFunc("POST /api/add", func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		var req struct {
+			Name string `json:"name"`
+			Col  string `json:"col"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
+			return
+		}
+		if req.Name == "" || !isMovableColumn(req.Col) {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
+			return
+		}
+
+		moveMu.Lock()
+		task, err := omnifocus.AddTask(req.Name, req.Col, projectID)
+		if err == nil {
+			cache.mu.Lock()
+			cache.tasks[task.ID] = cachedTask{task: task, col: req.Col}
+			cache.board = addBoardTask(cache.board, task, req.Col)
+			cache.mu.Unlock()
+		}
+		moveMu.Unlock()
+
+		if err != nil {
+			log.Printf("AddTask error: %v", err)
+			http.Error(w, "failed to add task", http.StatusInternalServerError)
+			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(task) //nolint:errcheck
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
+	})
+
 	addr := ":8080"
 	log.Printf("Listening on %s", addr)
 	if err := http.ListenAndServe(addr, mux); err != nil {
