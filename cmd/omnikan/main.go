@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"flag"
 	"log"
 	"net/http"
 	"sync"
@@ -45,12 +46,15 @@ var cache struct {
 var moveMu sync.Mutex
 
 func main() {
-	id, err := omnifocus.ProjectID(omnifocus.ProjectName)
+	projectName := flag.String("project", omnifocus.ProjectName, "OmniFocus project name")
+	flag.Parse()
+
+	id, err := omnifocus.ProjectID(*projectName)
 	if err != nil {
-		log.Fatalf("project %q not found in OmniFocus: %v", omnifocus.ProjectName, err)
+		log.Fatalf("project %q not found in OmniFocus: %v", *projectName, err)
 	}
 	projectID = id
-	log.Printf("resolved project %q -> %s", omnifocus.ProjectName, projectID)
+	log.Printf("resolved project %q -> %s", *projectName, projectID)
 
 	log.Printf("Loading board from OmniFocus...")
 	if err := refreshCache(); err != nil {
