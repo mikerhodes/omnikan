@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -19,9 +23,6 @@ var (
 
 const boardRefreshInterval = 10 * time.Minute
 
-// projectID is resolved at startup from omnifocus.ProjectName and passed to all queries.
-var projectID string
-
 type boardResponse struct {
 	Backlog    []omnifocus.Task `json:"backlog"`
 	Ready      []omnifocus.Task `json:"ready"`
@@ -33,45 +34,87 @@ type cachedTask struct {
 	col  string
 }
 
-// cache holds the last fetched board and a per-task lookup (including
-// completed tasks within the 60s undo window) for moves and completions.
-var cache struct {
-	mu    sync.Mutex
-	board boardResponse
-	tasks map[string]cachedTask // task ID -> task + current column
+type server struct {
+	projectID string
+
+	// moveMu serialises calls to OmniFocus so concurrent move requests are
+	// queued rather than run in parallel against the single-threaded JXA bridge.
+	moveMu sync.Mutex
+
+	// cacheMu protects board and tasks.
+	cacheMu sync.Mutex
+	board   boardResponse
+	tasks   map[string]cachedTask // task ID -> task + current column
+
+	mux *http.ServeMux
 }
 
-// moveMu serialises calls to OmniFocus so concurrent move requests are
-// queued rather than run in parallel against the single-threaded JXA bridge.
-var moveMu sync.Mutex
+func newServer(projectID string) *server {
+	s := &server{projectID: projectID}
+	s.mux = http.NewServeMux()
+
+	s.mux.HandleFunc("GET /", s.handleIndex())
+	s.mux.Handle("GET /static/", http.FileServerFS(static))
+	s.mux.HandleFunc("GET /api/board", s.handleBoard())
+	s.mux.HandleFunc("POST /api/move", s.handleMove())
+	s.mux.HandleFunc("POST /api/delete", s.handleDelete())
+	s.mux.HandleFunc("POST /api/complete", s.handleComplete())
+	s.mux.HandleFunc("POST /api/incomplete", s.handleIncomplete())
+	s.mux.HandleFunc("POST /api/add", s.handleAdd())
+
+	return s
+}
 
 func main() {
-	projectName := flag.String("project", omnifocus.ProjectName, "OmniFocus project name")
-	flag.Parse()
+	ctx := context.Background()
+	if err := run(ctx, os.Args[1:]); err != nil {
+		fmt.Fprintf(os.Stderr, "%s\n", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, args []string) error {
+	flags := flag.NewFlagSet("omnikan", flag.ContinueOnError)
+	projectName := flags.String("project", omnifocus.ProjectName, "OmniFocus project name")
+	addr := flags.String("addr", "localhost:8080", "listen address")
+	if err := flags.Parse(args); err != nil {
+		return err
+	}
 
 	id, err := omnifocus.ProjectID(*projectName)
 	if err != nil {
-		log.Fatalf("project %q not found in OmniFocus: %v", *projectName, err)
+		return fmt.Errorf("project %q not found in OmniFocus: %w", *projectName, err)
 	}
-	projectID = id
-	log.Printf("resolved project %q -> %s", *projectName, projectID)
+	log.Printf("resolved project %q -> %s", *projectName, id)
+
+	srv := newServer(id)
 
 	log.Printf("Loading board from OmniFocus...")
-	if err := refreshCache(); err != nil {
-		log.Fatalf("initial board load failed: %v", err)
+	if err := srv.refreshCache(); err != nil {
+		return fmt.Errorf("initial board load failed: %w", err)
 	}
 	go func() {
 		for range time.Tick(boardRefreshInterval) {
-			if err := refreshCache(); err != nil {
+			if err := srv.refreshCache(); err != nil {
 				log.Printf("board refresh error: %v", err)
 			}
 		}
 	}()
 
-	mux := http.NewServeMux()
+	host, port, _ := net.SplitHostPort(*addr)
+	if host == "" {
+		host = "localhost"
+	}
+	log.Printf("Listening on http://%s", net.JoinHostPort(host, port))
+	return http.ListenAndServe(*addr, srv)
+}
 
-	// Serve board.html at /
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.mux.ServeHTTP(w, r)
+}
+
+func (s *server) handleIndex() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		data, err := static.ReadFile("static/board.html") //nolint:goembedcheck
 		if err != nil {
@@ -82,33 +125,33 @@ func main() {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(data) //nolint:errcheck
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
-	})
+	}
+}
 
-	mux.Handle("GET /static/", http.FileServerFS(static))
-
-	// Return the cached board as JSON
-	mux.HandleFunc("GET /api/board", func(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleBoard() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
 		if r.URL.Query().Get("force") == "true" {
-			if err := refreshCache(); err != nil {
+			if err := s.refreshCache(); err != nil {
 				http.Error(w, "failed to refresh board", http.StatusInternalServerError)
 				log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 				return
 			}
 		}
 
-		cache.mu.Lock()
-		board := cache.board
-		cache.mu.Unlock()
+		s.cacheMu.Lock()
+		board := s.board
+		s.cacheMu.Unlock()
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(board) //nolint:errcheck
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
-	})
+	}
+}
 
-	// Move a task to a new column by swapping its kanban tag
-	mux.HandleFunc("POST /api/move", func(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleMove() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
 		var req struct {
@@ -129,19 +172,19 @@ func main() {
 
 		// moveMu is held for the cache read, JXA call, and cache write together
 		// so that rapid moves of the same card always use the latest oldCol.
-		moveMu.Lock()
-		cache.mu.Lock()
-		ct, ok := cache.tasks[req.ID]
-		cache.mu.Unlock()
+		s.moveMu.Lock()
+		s.cacheMu.Lock()
+		ct, ok := s.tasks[req.ID]
+		s.cacheMu.Unlock()
 
 		if !ok {
-			moveMu.Unlock()
+			s.moveMu.Unlock()
 			http.Error(w, "task not found in cache", http.StatusNotFound)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNotFound, time.Since(start))
 			return
 		}
 		if ct.col == req.NewCol {
-			moveMu.Unlock()
+			s.moveMu.Unlock()
 			w.WriteHeader(http.StatusNoContent)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 			return
@@ -149,12 +192,12 @@ func main() {
 
 		err := omnifocus.SwapTag(req.ID, ct.col, req.NewCol)
 		if err == nil {
-			cache.mu.Lock()
-			cache.tasks[req.ID] = cachedTask{task: ct.task, col: req.NewCol}
-			cache.board = moveBoardTask(cache.board, ct.task, ct.col, req.NewCol)
-			cache.mu.Unlock()
+			s.cacheMu.Lock()
+			s.tasks[req.ID] = cachedTask{task: ct.task, col: req.NewCol}
+			s.board = moveBoardTask(s.board, ct.task, ct.col, req.NewCol)
+			s.cacheMu.Unlock()
 		}
-		moveMu.Unlock()
+		s.moveMu.Unlock()
 
 		if err != nil {
 			log.Printf("SwapTag error: %v", err)
@@ -165,10 +208,11 @@ func main() {
 
 		w.WriteHeader(http.StatusNoContent)
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
-	})
+	}
+}
 
-	// Delete a task permanently from OmniFocus
-	mux.HandleFunc("POST /api/delete", func(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleDelete() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		var req struct {
 			ID string `json:"id"`
@@ -178,16 +222,16 @@ func main() {
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
-		moveMu.Lock()
+		s.moveMu.Lock()
 		err := omnifocus.DeleteTask(req.ID)
 		if err == nil {
-			cache.mu.Lock()
-			if ct, ok := cache.tasks[req.ID]; ok {
-				cache.board = removeBoardTask(cache.board, req.ID, ct.col)
+			s.cacheMu.Lock()
+			if ct, ok := s.tasks[req.ID]; ok {
+				s.board = removeBoardTask(s.board, req.ID, ct.col)
 			}
-			cache.mu.Unlock()
+			s.cacheMu.Unlock()
 		}
-		moveMu.Unlock()
+		s.moveMu.Unlock()
 		if err != nil {
 			http.Error(w, "failed to delete task", http.StatusInternalServerError)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
@@ -195,10 +239,11 @@ func main() {
 		}
 		w.WriteHeader(http.StatusNoContent)
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
-	})
+	}
+}
 
-	// Mark a task complete in OmniFocus
-	mux.HandleFunc("POST /api/complete", func(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleComplete() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		var req struct {
 			ID string `json:"id"`
@@ -208,16 +253,16 @@ func main() {
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
-		moveMu.Lock()
+		s.moveMu.Lock()
 		err := omnifocus.MarkComplete(req.ID)
 		if err == nil {
-			cache.mu.Lock()
-			if ct, ok := cache.tasks[req.ID]; ok {
-				cache.board = removeBoardTask(cache.board, req.ID, ct.col)
+			s.cacheMu.Lock()
+			if ct, ok := s.tasks[req.ID]; ok {
+				s.board = removeBoardTask(s.board, req.ID, ct.col)
 			}
-			cache.mu.Unlock()
+			s.cacheMu.Unlock()
 		}
-		moveMu.Unlock()
+		s.moveMu.Unlock()
 		if err != nil {
 			http.Error(w, "failed to complete task", http.StatusInternalServerError)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
@@ -225,10 +270,11 @@ func main() {
 		}
 		w.WriteHeader(http.StatusNoContent)
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
-	})
+	}
+}
 
-	// Mark a task incomplete in OmniFocus (undo complete)
-	mux.HandleFunc("POST /api/incomplete", func(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleIncomplete() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		var req struct {
 			ID string `json:"id"`
@@ -238,16 +284,16 @@ func main() {
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
-		moveMu.Lock()
+		s.moveMu.Lock()
 		err := omnifocus.MarkIncomplete(req.ID)
 		if err == nil {
-			cache.mu.Lock()
-			if ct, ok := cache.tasks[req.ID]; ok {
-				cache.board = addBoardTask(cache.board, ct.task, ct.col)
+			s.cacheMu.Lock()
+			if ct, ok := s.tasks[req.ID]; ok {
+				s.board = addBoardTask(s.board, ct.task, ct.col)
 			}
-			cache.mu.Unlock()
+			s.cacheMu.Unlock()
 		}
-		moveMu.Unlock()
+		s.moveMu.Unlock()
 		if err != nil {
 			http.Error(w, "failed to incomplete task", http.StatusInternalServerError)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
@@ -255,10 +301,11 @@ func main() {
 		}
 		w.WriteHeader(http.StatusNoContent)
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
-	})
+	}
+}
 
-	// Add a new task to a column
-	mux.HandleFunc("POST /api/add", func(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleAdd() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		var req struct {
 			Name string `json:"name"`
@@ -275,15 +322,15 @@ func main() {
 			return
 		}
 
-		moveMu.Lock()
-		task, err := omnifocus.AddTask(req.Name, req.Col, projectID)
+		s.moveMu.Lock()
+		task, err := omnifocus.AddTask(req.Name, req.Col, s.projectID)
 		if err == nil {
-			cache.mu.Lock()
-			cache.tasks[task.ID] = cachedTask{task: task, col: req.Col}
-			cache.board = addBoardTask(cache.board, task, req.Col)
-			cache.mu.Unlock()
+			s.cacheMu.Lock()
+			s.tasks[task.ID] = cachedTask{task: task, col: req.Col}
+			s.board = addBoardTask(s.board, task, req.Col)
+			s.cacheMu.Unlock()
 		}
-		moveMu.Unlock()
+		s.moveMu.Unlock()
 
 		if err != nil {
 			log.Printf("AddTask error: %v", err)
@@ -295,28 +342,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(task) //nolint:errcheck
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
-	})
-
-	addr := ":8080"
-	log.Printf("Listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
-		log.Fatal(err)
 	}
-}
-
-// refreshCache fetches all columns from OmniFocus and updates the cache.
-func refreshCache() error {
-	board, tasks, err := fetchBoard()
-	if err != nil {
-		return err
-	}
-	cache.mu.Lock()
-	cache.board = board
-	cache.tasks = tasks
-	cache.mu.Unlock()
-	log.Printf("board cache refreshed: %d backlog, %d ready, %d inprogress",
-		len(board.Backlog), len(board.Ready), len(board.InProgress))
-	return nil
 }
 
 // isMovableColumn returns true for the valid kanban columns.
@@ -324,6 +350,21 @@ func isMovableColumn(col string) bool {
 	return col == omnifocus.TagBacklog ||
 		col == omnifocus.TagReady ||
 		col == omnifocus.TagInProgress
+}
+
+// refreshCache fetches all columns from OmniFocus and updates the cache.
+func (s *server) refreshCache() error {
+	board, tasks, err := s.fetchBoard()
+	if err != nil {
+		return err
+	}
+	s.cacheMu.Lock()
+	s.board = board
+	s.tasks = tasks
+	s.cacheMu.Unlock()
+	log.Printf("board cache refreshed: %d backlog, %d ready, %d inprogress",
+		len(board.Backlog), len(board.Ready), len(board.InProgress))
+	return nil
 }
 
 // colSlice returns a pointer to the board slice for the given column.
@@ -374,11 +415,11 @@ func addBoardTask(b boardResponse, t omnifocus.Task, col string) boardResponse {
 
 // fetchBoard retrieves tasks for all columns from OmniFocus.
 // Calls are sequential because the OmniFocus scripting bridge is not re-entrant.
-func fetchBoard() (boardResponse, map[string]cachedTask, error) {
+func (s *server) fetchBoard() (boardResponse, map[string]cachedTask, error) {
 	var board boardResponse
 	tasks := map[string]cachedTask{}
 
-	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog, projectID)
+	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog, s.projectID)
 	if err != nil {
 		return board, nil, err
 	}
@@ -387,7 +428,7 @@ func fetchBoard() (boardResponse, map[string]cachedTask, error) {
 		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagBacklog}
 	}
 
-	ready, err := omnifocus.TasksForTag(omnifocus.TagReady, projectID)
+	ready, err := omnifocus.TasksForTag(omnifocus.TagReady, s.projectID)
 	if err != nil {
 		return board, nil, err
 	}
@@ -396,7 +437,7 @@ func fetchBoard() (boardResponse, map[string]cachedTask, error) {
 		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagReady}
 	}
 
-	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress, projectID)
+	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress, s.projectID)
 	if err != nil {
 		return board, nil, err
 	}
