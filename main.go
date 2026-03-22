@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	//go:embed static
-	static embed.FS
+	//go:embed assets
+	assets embed.FS
 )
 
 const boardRefreshInterval = 10 * time.Minute
@@ -54,7 +54,7 @@ func newServer(projectID string) *server {
 	s.mux = http.NewServeMux()
 
 	s.mux.HandleFunc("GET /", s.handleIndex())
-	s.mux.Handle("GET /static/", http.FileServerFS(static))
+	s.mux.Handle("GET /assets/", http.FileServerFS(assets))
 	s.mux.HandleFunc("GET /api/board", s.handleBoard())
 	s.mux.HandleFunc("POST /api/move", s.handleMove())
 	s.mux.HandleFunc("POST /api/delete", s.handleDelete())
@@ -116,7 +116,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *server) handleIndex() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		data, err := static.ReadFile("static/board.html") //nolint:goembedcheck
+		data, err := assets.ReadFile("assets/board.html") //nolint:goembedcheck
 		if err != nil {
 			http.Error(w, "not found", http.StatusNotFound)
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNotFound, time.Since(start))
