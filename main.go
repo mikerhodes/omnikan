@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"net/http"
@@ -56,9 +57,12 @@ func newServer(projectID string) *server {
 	s := &server{projectID: projectID}
 	s.mux = http.NewServeMux()
 
-	s.mux.HandleFunc("GET /{$}", s.handleIndex())
-	s.mux.Handle("GET /assets/", http.FileServerFS(assets))
-	s.mux.Handle("GET /favicon.ico", handleFavicon())
+	assetsSub, err := fs.Sub(assets, "assets")
+	if err != nil {
+		panic("Could not load assets from binary")
+	}
+	s.mux.Handle("GET /", http.FileServerFS(assetsSub))
+
 	s.mux.HandleFunc("GET /api/board", s.handleBoard())
 	s.mux.HandleFunc("POST /api/move", s.handleMove())
 	s.mux.HandleFunc("POST /api/delete", s.handleDelete())
