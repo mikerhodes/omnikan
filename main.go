@@ -53,15 +53,19 @@ type server struct {
 	mux *http.ServeMux
 }
 
-func newServer(projectID string) *server {
+func newServer(projectID string, dynamicAssets bool) *server {
 	s := &server{projectID: projectID}
 	s.mux = http.NewServeMux()
 
-	assetsSub, err := fs.Sub(assets, "assets")
-	if err != nil {
-		panic("Could not load assets from binary")
+	if dynamicAssets {
+		s.mux.Handle("/", http.FileServer(http.Dir("assets")))
+	} else {
+		assetsSub, err := fs.Sub(assets, "assets")
+		if err != nil {
+			panic("Could not load assets from binary")
+		}
+		s.mux.Handle("GET /", http.FileServerFS(assetsSub))
 	}
-	s.mux.Handle("GET /", http.FileServerFS(assetsSub))
 
 	s.mux.HandleFunc("GET /api/board", s.handleBoard())
 	s.mux.HandleFunc("POST /api/move", s.handleMove())
@@ -83,8 +87,11 @@ func main() {
 
 func run(ctx context.Context, args []string) error {
 	flags := flag.NewFlagSet("omnikan", flag.ContinueOnError)
-	projectName := flags.String("project", omnifocus.ProjectName, "OmniFocus project name")
+	projectName := flags.String("project", omnifocus.ProjectName,
+		"OmniFocus project name")
 	addr := flags.String("addr", "localhost:8080", "listen address")
+	dynamicAssets := flags.Bool("dynamic", false,
+		"use assets/ rather than embedded assets")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -95,7 +102,7 @@ func run(ctx context.Context, args []string) error {
 	}
 	log.Printf("resolved project %q -> %s", *projectName, id)
 
-	srv := newServer(id)
+	srv := newServer(id, *dynamicAssets)
 
 	log.Printf("Loading board from OmniFocus...")
 	if err := srv.refreshCache(); err != nil {
