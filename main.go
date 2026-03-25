@@ -20,9 +20,6 @@ import (
 var (
 	//go:embed assets
 	assets embed.FS
-
-	//go:embed assets/favicon.ico
-	favicon []byte
 )
 
 const boardRefreshInterval = 10 * time.Minute
@@ -57,8 +54,10 @@ func newServer(projectID string, dynamicAssets bool) *server {
 	s := &server{projectID: projectID}
 	s.mux = http.NewServeMux()
 
+	// Serve assets either from disk (useful for debug) or
+	// from embed in binary.
 	if dynamicAssets {
-		s.mux.Handle("/", http.FileServer(http.Dir("assets")))
+		s.mux.Handle("GET /", http.FileServer(http.Dir("assets")))
 	} else {
 		assetsSub, err := fs.Sub(assets, "assets")
 		if err != nil {
@@ -141,13 +140,6 @@ func (s *server) handleIndex() http.HandlerFunc {
 		w.Write(data) //nolint:errcheck
 		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
 	}
-}
-
-func handleFavicon() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/css")
-		w.Write(favicon)
-	})
 }
 
 func (s *server) handleBoard() http.HandlerFunc {
