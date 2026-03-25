@@ -127,21 +127,6 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
 }
 
-func (s *server) handleIndex() http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		data, err := assets.ReadFile("assets/board.html") //nolint:goembedcheck
-		if err != nil {
-			http.Error(w, "not found", http.StatusNotFound)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNotFound, time.Since(start))
-			return
-		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write(data) //nolint:errcheck
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
-	}
-}
-
 func (s *server) handleBoard() http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
