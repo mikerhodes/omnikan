@@ -354,7 +354,7 @@ func isMovableColumn(col string) bool {
 
 // refreshCache fetches all columns from OmniFocus and updates the cache.
 func (s *server) refreshCache() error {
-	board, tasks, err := s.fetchBoard()
+	board, tasks, err := fetchBoard(s.projectID)
 	if err != nil {
 		return err
 	}
@@ -415,11 +415,11 @@ func addBoardTask(b boardResponse, t omnifocus.Task, col string) boardResponse {
 
 // fetchBoard retrieves tasks for all columns from OmniFocus.
 // Calls are sequential because the OmniFocus scripting bridge is not re-entrant.
-func (s *server) fetchBoard() (boardResponse, map[string]cachedTask, error) {
+func fetchBoard(projectID string) (boardResponse, map[string]cachedTask, error) {
 	var board boardResponse
 	tasks := map[string]cachedTask{}
 
-	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog, s.projectID)
+	backlog, err := omnifocus.TasksForTag(omnifocus.TagBacklog, projectID)
 	if err != nil {
 		return board, nil, err
 	}
@@ -428,7 +428,7 @@ func (s *server) fetchBoard() (boardResponse, map[string]cachedTask, error) {
 		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagBacklog}
 	}
 
-	ready, err := omnifocus.TasksForTag(omnifocus.TagReady, s.projectID)
+	ready, err := omnifocus.TasksForTag(omnifocus.TagReady, projectID)
 	if err != nil {
 		return board, nil, err
 	}
@@ -437,7 +437,7 @@ func (s *server) fetchBoard() (boardResponse, map[string]cachedTask, error) {
 		tasks[t.ID] = cachedTask{task: t, col: omnifocus.TagReady}
 	}
 
-	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress, s.projectID)
+	inprogress, err := omnifocus.TasksForTag(omnifocus.TagInProgress, projectID)
 	if err != nil {
 		return board, nil, err
 	}
