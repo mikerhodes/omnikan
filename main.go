@@ -119,8 +119,9 @@ func run(ctx context.Context, args []string) error {
 	if host == "" {
 		host = "localhost"
 	}
-	log.Printf("Listening on http://%s", net.JoinHostPort(host, port))
-	return http.ListenAndServe(*addr, srv)
+	fullAddr := net.JoinHostPort(host, port)
+	log.Printf("Listening on http://%s", fullAddr)
+	return http.ListenAndServe(fullAddr, srv)
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
