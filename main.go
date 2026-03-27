@@ -265,7 +265,7 @@ func (c *writeThroughCache) addTask(name string, col string, projectID string) (
 // HTTP server
 //
 
-func newServer(projectID string, cache *writeThroughCache, dynamicAssets bool) *http.ServeMux {
+func newServer(projectID string, cache *writeThroughCache, dynamicAssets bool) http.Handler {
 	mux := http.NewServeMux()
 
 	// Serve assets either from disk (useful for debug) or
@@ -287,143 +287,114 @@ func newServer(projectID string, cache *writeThroughCache, dynamicAssets bool) *
 	mux.HandleFunc("POST /api/incomplete", handleIncomplete(cache))
 	mux.HandleFunc("POST /api/add", handleAdd(cache, projectID))
 
-	return mux
+	return loggingHandler(mux)
 }
 
 func handleBoard(cache *writeThroughCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
 		if r.URL.Query().Get("force") == "true" {
 			if err := cache.refresh(); err != nil {
 				http.Error(w, "failed to refresh board", http.StatusInternalServerError)
-				log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 				return
 			}
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(cache.getBoard()) //nolint:errcheck
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
 	}
 }
 
 func handleMove(cache *writeThroughCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-
 		var req struct {
 			ID     string `json:"id"`
 			NewCol string `json:"newCol"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
-
 		err := cache.moveTask(req.ID, req.NewCol)
 		if err != nil {
 			log.Printf("Error moving column: %v", err)
 			http.Error(w, "failed to move task", http.StatusInternalServerError)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 			return
 		}
-
 		w.WriteHeader(http.StatusNoContent)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	}
 }
 
 func handleDelete(cache *writeThroughCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
 		var req struct {
 			ID string `json:"id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
 		err := cache.deleteTask(req.ID)
 		if err != nil {
 			http.Error(w, "failed to delete task", http.StatusInternalServerError)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	}
 }
 
 func handleComplete(cache *writeThroughCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
 		var req struct {
 			ID string `json:"id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
 		err := cache.completeTask(req.ID)
 		if err != nil {
 			http.Error(w, "failed to complete task", http.StatusInternalServerError)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	}
 }
 
 func handleIncomplete(cache *writeThroughCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
 		var req struct {
 			ID string `json:"id"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
 		err := cache.uncompleteTask(req.ID)
 		if err != nil {
 			http.Error(w, "failed to incomplete task", http.StatusInternalServerError)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusNoContent, time.Since(start))
 	}
 }
 
 func handleAdd(cache *writeThroughCache, projectID string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
 		var req struct {
 			Name string `json:"name"`
 			Col  string `json:"col"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusBadRequest, time.Since(start))
 			return
 		}
 		task, err := cache.addTask(req.Name, req.Col, projectID)
 		if err != nil {
 			log.Printf("AddTask error: %v", err)
 			http.Error(w, "failed to add task", http.StatusInternalServerError)
-			log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusInternalServerError, time.Since(start))
 			return
 		}
-
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(task) //nolint:errcheck
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, http.StatusOK, time.Since(start))
 	}
 }
 
@@ -489,4 +460,27 @@ func addBoardTask(b *kanbanBoard, t omnifocus.Task, col string) *kanbanBoard {
 	}
 	*s = append(*s, t)
 	return b
+}
+
+//
+// Middlewares
+//
+
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	rw.statusCode = code
+	rw.ResponseWriter.WriteHeader(code)
+}
+
+func loggingHandler(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rw := &responseWriter{w, http.StatusOK}
+		h.ServeHTTP(rw, r)
+		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rw.statusCode, time.Since(start))
+	})
 }
