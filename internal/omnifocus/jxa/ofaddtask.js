@@ -21,4 +21,4 @@ var task = app.Task({ name: args.name })
 project.tasks.push(task)
 app.add(tag, { to: task.tags })
 
-JSON.stringify({ id: task.id(), name: task.name(), note: task.note() })
+JSON.stringify({ id: task.id(), name: task.name(), note: task.note(), tags: task.tags().map(function(tg) { return tg.name() }) })

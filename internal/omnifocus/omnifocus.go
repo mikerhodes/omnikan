@@ -25,10 +25,11 @@ const (
 
 // Task represents a task from OmniFocus.
 type Task struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Note  string `json:"note"`
-	Added string `json:"added"`
+	ID    string   `json:"id"`
+	Name  string   `json:"name"`
+	Note  string   `json:"note"`
+	Added string   `json:"added"`
+	Tags  []string `json:"tags"`
 }
 
 type projectNameQuery struct {
@@ -58,6 +59,27 @@ type addTaskArgs struct {
 	Name      string `json:"name"`
 	Tag       string `json:"tag"`
 	ProjectID string `json:"projectId"`
+}
+
+// GetTask fetches a single task by its OmniFocus ID.
+func GetTask(id string) (Task, error) {
+	jsCode, _ := jxa.ReadFile("jxa/ofgettask.js")
+	args, _ := json.Marshal(taskIDArgs{ID: id})
+
+	log.Printf("omnifocus: getting task %q", id)
+	start := time.Now()
+	out, err := executeScript(jsCode, args)
+	if err != nil {
+		log.Printf("omnifocus: get task error after %s: %v", time.Since(start), err)
+		return Task{}, err
+	}
+	log.Printf("omnifocus: get task done in %s", time.Since(start))
+
+	var task Task
+	if err := json.Unmarshal(out, &task); err != nil {
+		return Task{}, err
+	}
+	return task, nil
 }
 
 // DeleteTask permanently deletes a task from OmniFocus.
