@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"sync"
 	"time"
 
@@ -33,15 +34,25 @@ func main() {
 }
 
 func run(ctx context.Context, args []string) error {
+	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
+	defer cancel()
+
 	flags := flag.NewFlagSet("omnikan", flag.ContinueOnError)
 	projectName := flags.String("project", omnifocus.ProjectName,
 		"OmniFocus project name")
 	addr := flags.String("addr", "localhost:8080", "listen address")
 	dynamicAssets := flags.Bool("dynamic", false,
 		"use assets/ rather than embedded assets")
+
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
+
+	host, port, _ := net.SplitHostPort(*addr)
+	if host == "" {
+		host = "localhost"
+	}
+	fullAddr := net.JoinHostPort(host, port)
 
 	id, err := omnifocus.ProjectID(*projectName)
 	if err != nil {
@@ -49,33 +60,47 @@ func run(ctx context.Context, args []string) error {
 	}
 	log.Printf("resolved project %q -> %s", *projectName, id)
 
+	log.Printf("Loading board from OmniFocus...")
 	cache := &writeThroughCache{
 		board:     &kanbanBoard{},
 		tasks:     map[string]*cachedTask{},
 		projectID: id,
 	}
-
-	srv := newServer(id, cache, *dynamicAssets)
-
-	log.Printf("Loading board from OmniFocus...")
 	if err := cache.refresh(); err != nil {
 		return fmt.Errorf("initial board load failed: %w", err)
 	}
 	go func() {
 		for range time.Tick(boardRefreshInterval) {
 			if err := cache.refresh(); err != nil {
-				log.Printf("board refresh error: %v", err)
+				fmt.Fprintf(os.Stderr, "board refresh error: %v", err)
 			}
 		}
 	}()
 
-	host, port, _ := net.SplitHostPort(*addr)
-	if host == "" {
-		host = "localhost"
+	srv := newServer(id, cache, *dynamicAssets)
+	httpServer := &http.Server{
+		Addr:    fullAddr,
+		Handler: srv,
 	}
-	fullAddr := net.JoinHostPort(host, port)
-	log.Printf("Listening on http://%s", fullAddr)
-	return http.ListenAndServe(fullAddr, srv)
+	go func() {
+		log.Printf("listening on http://%s\n", httpServer.Addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "error listening and serving: %s\n", err)
+		}
+	}()
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		<-ctx.Done()
+		shutdownCtx := context.Background()
+		shutdownCtx, cancel := context.WithTimeout(shutdownCtx, 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			fmt.Fprintf(os.Stderr, "error shutting down http server: %s\n", err)
+		}
+	})
+	wg.Wait()
+
+	return nil
 }
 
 //
