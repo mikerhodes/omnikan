@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -38,8 +39,7 @@ func run(ctx context.Context, args []string) error {
 	defer cancel()
 
 	flags := flag.NewFlagSet("omnikan", flag.ContinueOnError)
-	projectName := flags.String("project", omnifocus.ProjectName,
-		"OmniFocus project name")
+	projectName := flags.String("project", "", "OmniFocus project name")
 	addr := flags.String("addr", "localhost:8080", "listen address")
 	dynamicAssets := flags.Bool("dynamic", false,
 		"use assets/ rather than embedded assets")
@@ -54,6 +54,9 @@ func run(ctx context.Context, args []string) error {
 	}
 	fullAddr := net.JoinHostPort(host, port)
 
+	if *projectName == "" {
+		return errors.New("-project is required")
+	}
 	id, err := omnifocus.ProjectID(*projectName)
 	if err != nil {
 		return fmt.Errorf("project %q not found in OmniFocus: %w", *projectName, err)

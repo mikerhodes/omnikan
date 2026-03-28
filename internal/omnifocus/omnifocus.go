@@ -13,9 +13,6 @@ var (
 	jxa embed.FS
 )
 
-// ProjectName is the OmniFocus project tasks must belong to.
-const ProjectName = "🤘Cloudant Next"
-
 // Tags for the three Kanban columns.
 const (
 	TagBacklog    = "backlog"
