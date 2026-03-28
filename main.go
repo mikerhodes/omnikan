@@ -268,7 +268,7 @@ func (c *writeThroughCache) uncompleteTask(id string) error {
 }
 
 // addTask creates the task in OmniFocus and inserts it into the cache.
-func (c *writeThroughCache) addTask(name string, col string, projectID string) (*cachedTask, error) {
+func (c *writeThroughCache) addTask(name string, col string) (*cachedTask, error) {
 	if name == "" || !isValidColumn(col) {
 		return nil, fmt.Errorf("invalid column %s", col)
 	}
@@ -276,7 +276,7 @@ func (c *writeThroughCache) addTask(name string, col string, projectID string) (
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 
-	task, err := omnifocus.AddTask(name, col, projectID)
+	task, err := omnifocus.AddTask(name, col, c.projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -290,7 +290,7 @@ func (c *writeThroughCache) addTask(name string, col string, projectID string) (
 // HTTP server
 //
 
-func newServer(projectID string, cache *writeThroughCache, dynamicAssets bool) http.Handler {
+func newServer(cache *writeThroughCache, dynamicAssets bool) http.Handler {
 	mux := http.NewServeMux()
 
 	// Serve assets either from disk (useful for debug) or
@@ -310,7 +310,7 @@ func newServer(projectID string, cache *writeThroughCache, dynamicAssets bool) h
 	mux.HandleFunc("POST /api/delete", handleDelete(cache))
 	mux.HandleFunc("POST /api/complete", handleComplete(cache))
 	mux.HandleFunc("POST /api/incomplete", handleIncomplete(cache))
-	mux.HandleFunc("POST /api/add", handleAdd(cache, projectID))
+	mux.HandleFunc("POST /api/add", handleAdd(cache))
 
 	return loggingHandler(mux)
 }
@@ -402,7 +402,7 @@ func handleIncomplete(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
-func handleAdd(cache *writeThroughCache, projectID string) http.HandlerFunc {
+func handleAdd(cache *writeThroughCache) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Name string `json:"name"`
@@ -412,7 +412,7 @@ func handleAdd(cache *writeThroughCache, projectID string) http.HandlerFunc {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		task, err := cache.addTask(req.Name, req.Col, projectID)
+		task, err := cache.addTask(req.Name, req.Col)
 		if err != nil {
 			log.Printf("AddTask error: %v", err)
 			http.Error(w, "failed to add task", http.StatusInternalServerError)
