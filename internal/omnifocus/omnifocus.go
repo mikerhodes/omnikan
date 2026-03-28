@@ -210,3 +210,27 @@ func TasksForTag(tag, projectID string) ([]Task, error) {
 
 	return tasks, nil
 }
+
+func TasksForProject(projectId string) ([]Task, error) {
+	type q struct {
+		ProjectId string `json:"projectid"`
+	}
+	jsCode, _ := jxa.ReadFile("jxa/oftasksforproject.js")
+	args, _ := json.Marshal(q{ProjectId: projectId})
+
+	log.Printf("omnifocus: querying project %q", projectId)
+	start := time.Now()
+	out, err := executeScript(jsCode, args)
+	if err != nil {
+		log.Printf("omnifocus: project %q error after %s: %v", projectId, time.Since(start), err)
+		return nil, err
+	}
+	log.Printf("omnifocus: project %q returned %d bytes in %s", projectId, len(out), time.Since(start))
+
+	var tasks []Task
+	if err := json.Unmarshal(out, &tasks); err != nil {
+		return nil, err
+	}
+
+	return tasks, nil
+}

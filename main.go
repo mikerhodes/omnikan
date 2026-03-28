@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"sync"
 	"time"
 
@@ -152,18 +153,14 @@ func (c *writeThroughCache) refresh() error {
 	}
 	newTasks := map[string]*cachedTask{}
 
-	tasks := []omnifocus.Task{}
-	for _, tag := range []string{
-		omnifocus.TagBacklog,
-		omnifocus.TagInProgress,
-		omnifocus.TagReady,
-	} {
-		ts, err := omnifocus.TasksForTag(tag, c.projectID)
-		if err != nil {
-			return err
-		}
-		tasks = append(tasks, ts...)
+	tasks, err := omnifocus.TasksForProject(c.projectID)
+	if err != nil {
+		return fmt.Errorf("error getting tasks for project: %w", err)
 	}
+	// Display with newest at top
+	sort.Slice(tasks, func(i, j int) bool {
+		return tasks[i].Added > tasks[j].Added
+	})
 	for _, t := range tasks {
 		col := columnForTask(&t)
 		c.tasks[t.ID] = &cachedTask{task: t, col: col}
@@ -434,7 +431,8 @@ func columnForTask(t *omnifocus.Task) string {
 			return tag
 		}
 	}
-	return ""
+	// Policy choice: all project tasks should be on board.
+	return omnifocus.TagBacklog
 }
 
 // isValidColumn returns true for the valid kanban columns.
