@@ -81,7 +81,7 @@ func run(ctx context.Context, args []string) error {
 		}
 	}()
 
-	srv := newServer(id, cache, *dynamicAssets)
+	srv := newServer(cache, *dynamicAssets)
 	httpServer := &http.Server{
 		Addr:    fullAddr,
 		Handler: srv,
