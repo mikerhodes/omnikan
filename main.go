@@ -268,7 +268,7 @@ func (c *writeThroughCache) uncompleteTask(id string) error {
 }
 
 // addTask creates the task in OmniFocus and inserts it into the cache.
-func (c *writeThroughCache) addTask(name string, col string) (*cachedTask, error) {
+func (c *writeThroughCache) addTask(name string, col string) (*omnifocus.Task, error) {
 	if name == "" || !isValidColumn(col) {
 		return nil, fmt.Errorf("invalid column %s", col)
 	}
@@ -283,7 +283,7 @@ func (c *writeThroughCache) addTask(name string, col string) (*cachedTask, error
 	ct := &cachedTask{task: task, col: col}
 	c.tasks[ct.task.ID] = ct
 	c.board = addBoardTask(c.board, task, col)
-	return ct, nil
+	return &ct.task, nil
 }
 
 //
@@ -419,7 +419,11 @@ func handleAdd(cache *writeThroughCache) http.HandlerFunc {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(task) //nolint:errcheck
+		err = json.NewEncoder(w).Encode(task)
+		if err != nil {
+			log.Printf("AddTask error: %v", err)
+			return
+		}
 	}
 }
 
