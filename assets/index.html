@@ -290,6 +290,40 @@
     </div>
   </div>
 
+  <!-- ==================== Templates ==================== -->
+
+  <template id="tmpl-card">
+    <div class="card" draggable="true">
+      <input type="checkbox" class="card-check" title="Mark complete">
+      <div class="card-body">
+        <div class="card-name"></div>
+      </div>
+      <div class="card-actions">
+        <button class="btn" title="Edit task">Edit</button>
+        <button class="btn" title="Delete task">Delete</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="tmpl-card-note">
+    <div class="card-note"></div>
+  </template>
+
+  <template id="tmpl-empty">
+    <div class="empty">No tasks</div>
+  </template>
+
+  <template id="tmpl-edit-form">
+    <div class="card-edit-form">
+      <label>Name:<input class="form-input"></label>
+      <label>Note:<textarea class="form-textarea" rows="3"></textarea></label>
+      <div class="form-actions">
+        <button class="btn cancel-btn">Cancel</button>
+        <button class="btn save-btn">Save</button>
+      </div>
+    </div>
+  </template>
+
   <script>
     const COLUMNS = ["backlog", "ready", "inprogress"];
     const REFRESH_MS = 600000;
@@ -317,27 +351,32 @@
       const cards = document.getElementById("cards-" + col);
       const count = document.getElementById("cnt-" + col);
       count.textContent = tasks.length;
+      cards.innerHTML = '';
       if (tasks.length === 0) {
-        cards.innerHTML = '<div class="empty">No tasks</div>';
+        cards.appendChild(document.querySelector("#tmpl-empty").content.cloneNode(true));
       } else {
         var cutoff30 = new Date(Date.now() - THIRTY_DAYS_MS);
         var cutoff90 = new Date(Date.now() - NINETY_DAYS_MS);
         var divider30 = false;
         var divider90 = false;
-        var html = "";
         tasks.forEach(function(t) {
           var added = t.added && new Date(t.added);
           if (!divider30 && added && added < cutoff30) {
-            html += '<div class="section-divider">Older than 30 days</div>';
+            var d = document.createElement("div");
+            d.className = "section-divider";
+            d.textContent = "Older than 30 days";
+            cards.appendChild(d);
             divider30 = true;
           }
           if (!divider90 && added && added < cutoff90) {
-            html += '<div class="section-divider">Older than 90 days</div>';
+            var d = document.createElement("div");
+            d.className = "section-divider";
+            d.textContent = "Older than 90 days";
+            cards.appendChild(d);
             divider90 = true;
           }
-          html += cardHtml(t, col);
+          cards.appendChild(cardEl(t, col));
         });
-        cards.innerHTML = html;
       }
 
       var col_el = document.getElementById("col-" + col);
@@ -388,26 +427,32 @@
     // Tracks pending completion timers: taskId -> setTimeout handle
     var completionTimers = {};
 
-    function cardHtml(task, col) {
-      var note = (col === "inprogress" && task.note)
-        ? '<div class="card-note">' + linkify(escapeHtml(task.note)) + '</div>'
-        : '';
-      return '<div class="card" draggable="true" data-id="' + task.id + '"'
-        + ' data-name="' + escapeHtml(task.name) + '"'
-        + ' data-note="' + escapeHtml(task.note || '') + '"'
-        + ' ondragstart="onDragStart(event)"'
-        + ' ondragend="onDragEnd(event)">'
-        + '<input type="checkbox" class="card-check" title="Mark complete"'
-        + ' onchange="onCheckChange(event,\'' + task.id + '\')">'
-        + '<div class="card-body">'
-        + '<div class="card-name">' + escapeHtml(task.name) + '</div>'
-        + note
-        + '</div>'
-        + '<div class="card-actions">'
-        + '<button class="btn" title="Edit task" onclick="onEditTask(event)">Edit</button>'
-        + '<button class="btn" title="Delete task" onclick="onDeleteTask(event,\'' + task.id + '\')">Delete</button>'
-        + '</div>'
-        + '</div>';
+    function cardEl(task, col) {
+      var el = document.querySelector("#tmpl-card").content.cloneNode(true).firstElementChild;
+
+      el.dataset.id = task.id;
+      el.dataset.name = task.name;
+      el.dataset.note = task.note || '';
+      el.addEventListener("dragstart", onDragStart);
+      el.addEventListener("dragend", onDragEnd);
+
+      el.querySelector(".card-check").addEventListener("change", function(e) {
+        onCheckChange(e, task.id);
+      });
+      el.querySelector(".card-name").textContent = task.name;
+
+      if (col === "inprogress" && task.note) {
+        var noteEl = document.querySelector("#tmpl-card-note").content.cloneNode(true).firstElementChild;
+        noteEl.innerHTML = linkify(escapeHtml(task.note));
+        el.querySelector(".card-body").appendChild(noteEl);
+      }
+
+      el.querySelector('[title="Edit task"]').addEventListener("click", onEditTask);
+      el.querySelector('[title="Delete task"]').addEventListener("click", function(e) {
+        onDeleteTask(e, task.id);
+      });
+
+      return el;
     }
 
     function onEditTask(e) {
@@ -416,19 +461,15 @@
       var id = card.dataset.id;
       var name = card.dataset.name;
       var note = card.dataset.note;
-      
+
       card.classList.add("editing");
       card.setAttribute("draggable", "false");
 
-      var editForm = document.createElement("div");
-      editForm.className = "card-edit-form";
-      editForm.innerHTML =
-        '<label>Name:<input class="form-input" id="edit-name-' + id + '" value="' + escapeHtml(name) + '"/></label>' +
-        '<label>Note:<textarea class="form-textarea" id="edit-note-' + id + '" rows="3">' + escapeHtml(note) + '</textarea></label>' +
-        '<div class="form-actions">' +
-        '<button class="btn" onclick="onCancelEdit(event,\'' + id + '\')">Cancel</button>' +
-        '<button class="btn" onclick="onSaveEdit(event,\'' + id + '\')">Save</button>' +
-        '</div>';
+      var editForm = document.querySelector("#tmpl-edit-form").content.cloneNode(true).firstElementChild;
+      editForm.querySelector(".form-input").value = name;
+      editForm.querySelector(".form-textarea").value = note;
+      editForm.querySelector(".cancel-btn").addEventListener("click", function(e) { onCancelEdit(e, id); });
+      editForm.querySelector(".save-btn").addEventListener("click", function(e) { onSaveEdit(e, id); });
 
       card.appendChild(editForm);
     }
@@ -467,8 +508,9 @@
         if (cardNote) {
           cardNote.innerHTML = linkify(escapeHtml(note));
         } else {
-          cardBody.insertAdjacentHTML("beforeend",
-            '<div class="card-note">' + linkify(escapeHtml(note)) + '</div>');
+          var noteEl = document.querySelector("#tmpl-card-note").content.cloneNode(true).firstElementChild;
+          noteEl.innerHTML = linkify(escapeHtml(note));
+          cardBody.appendChild(noteEl);
         }
       } else if (cardNote) {
         cardNote.remove();
@@ -608,7 +650,7 @@
         var cards = cardsEl.querySelectorAll(".card");
         var empty = cardsEl.querySelector(".empty");
         if (cards.length === 0 && !empty) {
-          cardsEl.innerHTML = '<div class="empty">No tasks</div>';
+          cardsEl.appendChild(document.querySelector("#tmpl-empty").content.cloneNode(true));
         } else if (cards.length > 0 && empty) {
           empty.remove();
         }
@@ -689,7 +731,7 @@
           var cardsEl = document.getElementById("cards-" + col);
           var empty = cardsEl.querySelector(".empty");
           if (empty) empty.remove();
-          cardsEl.insertAdjacentHTML("afterbegin", cardHtml(task, col));
+          cardsEl.prepend(cardEl(task, col));
           updateColumnCounts();
         })
         .catch(function(err) {
