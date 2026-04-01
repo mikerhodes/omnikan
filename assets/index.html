@@ -397,6 +397,12 @@
         var id = dragEl.dataset.id;
         var cardsEl = document.getElementById("cards-" + col);
 
+        // No-op if dropped onto the same column
+        if (dragEl.parentElement === cardsEl) {
+          dragEl.classList.remove("dragging");
+          return;
+        }
+
         // Move card in the DOM immediately
         dragEl.classList.remove("dragging");
         cardsEl.appendChild(dragEl);
