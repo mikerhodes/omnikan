@@ -93,6 +93,7 @@
     .card-name { line-height: 1.4; }
 
     .card-note {
+      display: none;
       margin-top: 4px;
       margin-left: 0;
       font-size: 0.75rem;
@@ -100,6 +101,8 @@
       line-height: 1.4;
       white-space: pre-wrap;
     }
+
+    #col-inprogress .card-note { display: block; }
 
     .card-note a {
       color: var(--accent);
@@ -297,16 +300,13 @@
       <input type="checkbox" class="card-check" title="Mark complete">
       <div class="card-body">
         <div class="card-name"></div>
+        <div class="card-note"></div>
       </div>
       <div class="card-actions">
         <button class="btn" title="Edit task">Edit</button>
         <button class="btn" title="Delete task">Delete</button>
       </div>
     </div>
-  </template>
-
-  <template id="tmpl-card-note">
-    <div class="card-note"></div>
   </template>
 
   <template id="tmpl-empty">
@@ -446,12 +446,7 @@
         onCheckChange(e, task.id);
       });
       el.querySelector(".card-name").textContent = task.name;
-
-      if (col === "inprogress" && task.note) {
-        var noteEl = document.querySelector("#tmpl-card-note").content.cloneNode(true).firstElementChild;
-        noteEl.innerHTML = linkify(escapeHtml(task.note));
-        el.querySelector(".card-body").appendChild(noteEl);
-      }
+      el.querySelector(".card-note").innerHTML = linkify(escapeHtml(task.note || ''));
 
       el.querySelector('[title="Edit task"]').addEventListener("click", onEditTask);
       el.querySelector('[title="Delete task"]').addEventListener("click", function(e) {
@@ -508,19 +503,7 @@
       var cardName = cardBody.querySelector(".card-name");
       cardName.textContent = name;
 
-      var cardNote = cardBody.querySelector(".card-note");
-      var col = card.closest(".cards").id.replace("cards-", "");
-      if (col === "inprogress" && note) {
-        if (cardNote) {
-          cardNote.innerHTML = linkify(escapeHtml(note));
-        } else {
-          var noteEl = document.querySelector("#tmpl-card-note").content.cloneNode(true).firstElementChild;
-          noteEl.innerHTML = linkify(escapeHtml(note));
-          cardBody.appendChild(noteEl);
-        }
-      } else if (cardNote) {
-        cardNote.remove();
-      }
+      cardBody.querySelector(".card-note").innerHTML = linkify(escapeHtml(note));
 
       card.classList.remove("editing");
       card.setAttribute("draggable", "true");
