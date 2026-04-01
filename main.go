@@ -163,7 +163,7 @@ func (c *writeThroughCache) refresh() error {
 	})
 	for _, t := range tasks {
 		col := columnForTask(&t)
-		c.tasks[t.ID] = &cachedTask{task: t, col: col}
+		newTasks[t.ID] = &cachedTask{task: t, col: col}
 		switch col {
 		case omnifocus.TagBacklog:
 			newBoard.Backlog = append(newBoard.Backlog, t)
@@ -267,6 +267,25 @@ func (c *writeThroughCache) uncompleteTask(id string) error {
 	return nil
 }
 
+// editTask updates a task's name and note in OmniFocus and updates the cache.
+func (c *writeThroughCache) editTask(id, name, note string) (*omnifocus.Task, error) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+
+	task, err := omnifocus.EditTask(id, name, note)
+	if err != nil {
+		return nil, err
+	}
+	
+	if ct, ok := c.tasks[id]; ok {
+		ct.task.Name = task.Name
+		ct.task.Note = task.Note
+		c.board = updateBoardTask(c.board, task, ct.col)
+	}
+	
+	return &task, nil
+}
+
 // addTask creates the task in OmniFocus and inserts it into the cache.
 func (c *writeThroughCache) addTask(name string, col string) (*omnifocus.Task, error) {
 	if name == "" || !isValidColumn(col) {
@@ -311,6 +330,7 @@ func newServer(cache *writeThroughCache, dynamicAssets bool) http.Handler {
 	mux.HandleFunc("POST /api/complete", handleComplete(cache))
 	mux.HandleFunc("POST /api/incomplete", handleIncomplete(cache))
 	mux.HandleFunc("POST /api/add", handleAdd(cache))
+	mux.HandleFunc("POST /api/edit", handleEdit(cache))
 
 	return loggingHandler(mux)
 }
@@ -427,6 +447,32 @@ func handleAdd(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
+func handleEdit(cache *writeThroughCache) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+			Note string `json:"note"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		task, err := cache.editTask(req.ID, req.Name, req.Note)
+		if err != nil {
+			log.Printf("EditTask error: %v", err)
+			http.Error(w, "failed to edit task", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(w).Encode(task)
+		if err != nil {
+			log.Printf("EditTask error: %v", err)
+			return
+		}
+	}
+}
+
 // columnForTask returns the kanban column for a task by inspecting its tags.
 // Returns the first tag that matches a kanban column constant, or empty string.
 func columnForTask(t *omnifocus.Task) string {
@@ -489,6 +535,21 @@ func addBoardTask(b *kanbanBoard, t omnifocus.Task, col string) *kanbanBoard {
 		return b
 	}
 	*s = append(*s, t)
+	return b
+}
+
+// updateBoardTask updates a task in its column slice.
+func updateBoardTask(b *kanbanBoard, t omnifocus.Task, col string) *kanbanBoard {
+	s := colSlice(b, col)
+	if s == nil {
+		return b
+	}
+	for i, task := range *s {
+		if task.ID == t.ID {
+			(*s)[i] = t
+			break
+		}
+	}
 	return b
 }
 

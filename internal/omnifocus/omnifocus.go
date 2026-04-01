@@ -52,6 +52,12 @@ type taskIDArgs struct {
 	ID string `json:"id"`
 }
 
+type editTaskArgs struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Note string `json:"note"`
+}
+
 type addTaskArgs struct {
 	Name      string `json:"name"`
 	Tag       string `json:"tag"`
@@ -71,6 +77,27 @@ func GetTask(id string) (Task, error) {
 		return Task{}, err
 	}
 	log.Printf("omnifocus: get task done in %s", time.Since(start))
+
+	var task Task
+	if err := json.Unmarshal(out, &task); err != nil {
+		return Task{}, err
+	}
+	return task, nil
+}
+
+// EditTask updates a task's name and note in OmniFocus.
+func EditTask(id, name, note string) (Task, error) {
+	jsCode, _ := jxa.ReadFile("jxa/ofedittask.js")
+	args, _ := json.Marshal(editTaskArgs{ID: id, Name: name, Note: note})
+
+	log.Printf("omnifocus: editing task %q", id)
+	start := time.Now()
+	out, err := executeScript(jsCode, args)
+	if err != nil {
+		log.Printf("omnifocus: edit task error after %s: %v", time.Since(start), err)
+		return Task{}, err
+	}
+	log.Printf("omnifocus: edit task done in %s", time.Since(start))
 
 	var task Task
 	if err := json.Unmarshal(out, &task); err != nil {

@@ -125,6 +125,10 @@
       padding: 2px 10px;
     }
 
+    .card-actions .btn + .btn {
+      margin-left: 4px;
+    }
+
     .card:hover .card-actions {
       opacity: 1;
       pointer-events: auto;
@@ -213,6 +217,39 @@
       background: var(--accent-hover);
       border-color: var(--accent-dark-hover);
       border-bottom-color: var(--accent-dark-hover);
+    }
+
+    .card-edit-form {
+      width: 100%;
+      padding: 8px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 4px;
+    }
+
+    .card-edit-form textarea {
+      resize: vertical;
+      min-height: 2.5em;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .card-edit-form .form-actions {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+      justify-content: flex-end;
+    }
+
+    .card-edit-form .btn {
+      font-size: 0.75rem;
+      padding: 4px 12px;
+    }
+
+    .card.editing .card-body,
+    .card.editing .card-check,
+    .card.editing .card-actions {
+      display: none;
     }
   </style>
 </head>
@@ -356,6 +393,8 @@
         ? '<div class="card-note">' + linkify(escapeHtml(task.note)) + '</div>'
         : '';
       return '<div class="card" draggable="true" data-id="' + task.id + '"'
+        + ' data-name="' + escapeHtml(task.name) + '"'
+        + ' data-note="' + escapeHtml(task.note || '') + '"'
         + ' ondragstart="onDragStart(event)"'
         + ' ondragend="onDragEnd(event)">'
         + '<input type="checkbox" class="card-check" title="Mark complete"'
@@ -365,9 +404,96 @@
         + note
         + '</div>'
         + '<div class="card-actions">'
+        + '<button class="btn" title="Edit task" onclick="onEditTask(event)">Edit</button>'
         + '<button class="btn" title="Delete task" onclick="onDeleteTask(event,\'' + task.id + '\')">Delete</button>'
         + '</div>'
         + '</div>';
+    }
+
+    function onEditTask(e) {
+      e.stopPropagation();
+      var card = e.target.closest(".card");
+      var id = card.dataset.id;
+      var name = card.dataset.name;
+      var note = card.dataset.note;
+      
+      card.classList.add("editing");
+      card.setAttribute("draggable", "false");
+
+      var editForm = document.createElement("div");
+      editForm.className = "card-edit-form";
+      editForm.innerHTML =
+        '<label>Name:<input class="form-input" id="edit-name-' + id + '" value="' + escapeHtml(name) + '"/></label>' +
+        '<label>Note:<textarea class="form-textarea" id="edit-note-' + id + '" rows="3">' + escapeHtml(note) + '</textarea></label>' +
+        '<div class="form-actions">' +
+        '<button class="btn" onclick="onCancelEdit(event,\'' + id + '\')">Cancel</button>' +
+        '<button class="btn" onclick="onSaveEdit(event,\'' + id + '\')">Save</button>' +
+        '</div>';
+
+      card.appendChild(editForm);
+    }
+
+    function onCancelEdit(e, id) {
+      e.stopPropagation();
+      var card = e.target.closest(".card");
+      card.classList.remove("editing");
+      card.setAttribute("draggable", "true");
+      card.querySelector(".card-edit-form").remove();
+    }
+
+    function onSaveEdit(e, id) {
+      e.stopPropagation();
+      var card = e.target.closest(".card");
+      var name = document.getElementById("edit-name-" + id).value.trim();
+      var note = document.getElementById("edit-note-" + id).value.trim();
+
+      if (!name) {
+        setError("Task name cannot be empty");
+        return;
+      }
+
+      // Update the card data attributes
+      card.dataset.name = name;
+      card.dataset.note = note;
+
+      // Update the card in place immediately
+      var cardBody = card.querySelector(".card-body");
+      var cardName = cardBody.querySelector(".card-name");
+      cardName.textContent = name;
+
+      var cardNote = cardBody.querySelector(".card-note");
+      var col = card.closest(".cards").id.replace("cards-", "");
+      if (col === "inprogress" && note) {
+        if (cardNote) {
+          cardNote.innerHTML = linkify(escapeHtml(note));
+        } else {
+          cardBody.insertAdjacentHTML("beforeend",
+            '<div class="card-note">' + linkify(escapeHtml(note)) + '</div>');
+        }
+      } else if (cardNote) {
+        cardNote.remove();
+      }
+
+      card.classList.remove("editing");
+      card.setAttribute("draggable", "true");
+      card.querySelector(".card-edit-form").remove();
+
+      // Fire backend update in the background; reload on failure
+      incPending();
+      fetch("/api/edit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: id, name: name, note: note })
+      })
+        .then(function(r) {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          decPending();
+        })
+        .catch(function(err) {
+          decPending();
+          setError("Failed to edit task: " + err.message);
+          loadBoard();
+        });
     }
 
     function onDeleteTask(e, id) {
