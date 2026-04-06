@@ -1,0 +1,247 @@
+
+body {
+  flex-direction: column;
+  padding: 16px;
+  height: 100vh;
+}
+
+header {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: baseline;
+  margin-bottom: 12px;
+}
+
+header h1 {
+  font-family: monospace;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+#board {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.column {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.cards {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.column.drag-over {
+  background: var(--focus-container-bg);
+  outline: 2px solid var(--drag-outline);
+  outline-offset: -1px;
+}
+
+.column-header {
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card {
+  cursor: grab;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+.card.dragging { opacity: 0.4; cursor: grabbing; }
+
+.column.active .card { color: var(--text-active); }
+
+.card.done { opacity: 0.45; }
+
+.card.done .card-name {
+  text-decoration: line-through;
+  color: var(--ui-chrome);
+}
+
+.card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-name { line-height: 1.4; }
+
+.card-note {
+  display: none;
+  margin-top: 4px;
+  margin-left: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+#col-inprogress .card-note { display: block; }
+
+.card-note a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.card-note a:hover { text-decoration: underline; }
+
+.card-check {
+  margin-top: 1px;
+}
+
+.card-actions {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.card-actions .btn {
+  font-size: 0.75rem;
+  padding: 2px 10px;
+}
+
+.card-actions .btn + .btn {
+  margin-left: 4px;
+}
+
+.card:hover .card-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.card { position: relative; }
+
+.empty {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 12px 0;
+}
+
+.section-divider {
+  font-size: 0.7rem;
+  color: var(--ui-chrome);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 6px 0 2px;
+  border-top: 1px solid var(--panel-border);
+  margin-top: 4px;
+}
+
+#status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#status {
+  font-size: 0.75rem;
+  color: var(--ui-chrome);
+}
+
+#refresh-btn {
+  font-size: 0.75rem;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+
+.shortcut {
+  font-size: 0.75rem;
+  color: var(--ui-chrome);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+#error {
+  color: var(--error);
+  font-size: 0.75rem;
+}
+
+.add-task {
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+  align-items: stretch;
+}
+
+.add-task textarea {
+  flex: 1;
+  resize: none;
+  height: 2.8em;
+  min-height: unset;
+}
+
+.add-task .add-btn {
+  width: 2.8em;
+  height: 2.8em;
+  flex-shrink: 0;
+  padding: 0;
+  justify-content: center;
+}
+
+.add-task.focused .add-btn {
+  background: var(--accent);
+  border-color: var(--accent-dark);
+  border-bottom-color: var(--accent-dark);
+  color: #fff;
+}
+
+.add-task.focused .add-btn:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-dark-hover);
+  border-bottom-color: var(--accent-dark-hover);
+}
+
+.card-edit-form {
+  width: 100%;
+  padding: 8px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+
+.card-edit-form textarea {
+  resize: vertical;
+  min-height: 2.5em;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.card-edit-form .form-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  justify-content: flex-end;
+}
+
+.card-edit-form .btn {
+  font-size: 0.75rem;
+  padding: 4px 12px;
+}
+
+.card.editing .card-body,
+.card.editing .card-check,
+.card.editing .card-actions {
+  display: none;
+}
