@@ -20,52 +20,44 @@
       <button class="btn" id="refresh-btn" onclick="forceRefresh()">Refresh</button>
     </div>
   </header>
-  <div id="board">
-    <div class="column panel" id="col-backlog">
-      <div class="column-header panel-title">Backlog <span class="badge" id="cnt-backlog">0</span></div>
-      <div class="cards" id="cards-backlog"></div>
+
+  <div x-data="kanban" id="board">
+    <template x-for="(value, key) in board">
+    <div class="column panel" :class="key == 'inprogress' && 'active'" :id="'col-' + key">
+      <div class="column-header panel-title">
+        <span x-text="columns[key]">Backlog</span>
+        <span x-text="board[key].length" class="badge" id="cnt-backlog">0</span>
+      </div>
+      <div class="cards" id="cards-backlog">
+
+        <template x-for="card in board[key]" id="tmpl-card">
+          <div class="card" draggable="true">
+            <input type="checkbox" class="card-check" title="Mark complete">
+            <div class="card-body">
+              <div x-text="card.name" class="card-name"></div>
+              <div x-text="card.note" class="card-note"></div>
+            </div>
+            <div class="card-actions">
+              <button class="btn" title="Edit task">Edit</button>
+              <button class="btn" title="Delete task">Delete</button>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="board['backlog'].length == 0" id="tmpl-empty">
+          <div class="empty">No tasks</div>
+        </template>
+
+      </div>
       <div class="add-task" id="add-backlog">
         <textarea class="form-textarea" id="add-input-backlog" placeholder="Add task…" rows="2"></textarea>
         <button class="btn add-btn" title="Add task">+</button>
       </div>
     </div>
-    <div class="column panel" id="col-ready">
-      <div class="column-header panel-title">Ready <span class="badge" id="cnt-ready">0</span></div>
-      <div class="cards" id="cards-ready"></div>
-      <div class="add-task" id="add-ready">
-        <textarea class="form-textarea" id="add-input-ready" placeholder="Add task…" rows="2"></textarea>
-        <button class="btn add-btn" title="Add task">+</button>
-      </div>
-    </div>
-    <div class="column panel active" id="col-inprogress" style="flex: 2">
-      <div class="column-header panel-title">In Progress <span class="badge" id="cnt-inprogress">0</span></div>
-      <div class="cards" id="cards-inprogress"></div>
-      <div class="add-task" id="add-inprogress">
-        <textarea class="form-textarea" id="add-input-inprogress" placeholder="Add task…" rows="2"></textarea>
-        <button class="btn add-btn" title="Add task">+</button>
-      </div>
-    </div>
+    </template>
   </div>
 
   <!-- ==================== Templates ==================== -->
-
-  <template id="tmpl-card">
-    <div class="card" draggable="true">
-      <input type="checkbox" class="card-check" title="Mark complete">
-      <div class="card-body">
-        <div class="card-name"></div>
-        <div class="card-note"></div>
-      </div>
-      <div class="card-actions">
-        <button class="btn" title="Edit task">Edit</button>
-        <button class="btn" title="Delete task">Delete</button>
-      </div>
-    </div>
-  </template>
-
-  <template id="tmpl-empty">
-    <div class="empty">No tasks</div>
-  </template>
 
   <template id="tmpl-edit-form">
     <div class="card-edit-form">
@@ -79,14 +71,46 @@
   </template>
 
   <script>
+    const REFRESH_MS = 600000;
+
     document.addEventListener('alpine:init', () => {
       Alpine.store('status', {msg: "", error: ""});
-      loadBoard();
-      setInterval(loadBoard, REFRESH_MS);
-    })
+      Alpine.data("kanban", () => ({
+        board: {"backlog": [], "ready": [], "inprogress": []},
+        columns: {
+          "backlog": "Backlog",
+          "ready": "Ready",
+          "inprogress": "In progress"
+        },
 
-    const COLUMNS = ["backlog", "ready", "inprogress"];
-    const REFRESH_MS = 600000;
+        async init() {
+          await this.loadBoard();
+          // TODO add destroy method clears timer
+          setInterval(() => this.loadBoard(false), REFRESH_MS);
+        },
+
+        async loadBoard(reloadFromOmnifocus) {
+          setError("");
+          setStatus(reloadFromOmnifocus ? "Refreshing…" : "Loading…");
+          const url = reloadFromOmnifocus ? "/api/board?force=true" : "/api/board";
+          try {
+            const response = await fetch(url);
+            if (!response.ok) {
+              throw new Error(`Response status: ${response.status}`);
+            }
+            const result = await response.json();
+            console.log(result);
+            this.board = result;
+            setStatus("Last updated: " + new Date().toLocaleTimeString());
+          } catch (error) {
+            console.error(error.message);
+            setStatus("");
+            setError("Failed to load board: " + error.message);
+          }
+        }
+      }));
+    });
+
 
     var dragEl = null;    // the card element being dragged
     var pendingMoves = 0; // count of in-flight move requests
@@ -489,7 +513,7 @@
         });
     }
 
-    COLUMNS.forEach(function(col) {
+/*    COLUMNS.forEach(function(col) {
       var widget = document.getElementById("add-" + col);
       var textarea = document.getElementById("add-input-" + col);
       var btn = widget.querySelector(".add-btn");
@@ -507,7 +531,7 @@
         submitAddTask(col);
       });
     });
-
+*/
   </script>
 </body>
 </html>
