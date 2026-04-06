@@ -8,14 +8,15 @@
   <link rel="stylesheet" href="/umber-light.css" media="(prefers-color-scheme: light)">
   <link rel="stylesheet" href="/umber-dark.css"  media="(prefers-color-scheme: dark)">
   <link href="/app.css" rel="stylesheet" />
+  <script src="//unpkg.com/alpinejs" defer></script>
 </head>
 <body>
   <header>
     <h1>Kanban</h1>
     <div class="shortcut">Quick entry <kbd>⌃⌥Space</kbd></div>
-    <div id="status-bar">
-      <div id="error"></div>
-      <div id="status"></div>
+    <div x-data id="status-bar">
+      <div x-text="$store.status.error" id="error"></div>
+      <div x-text="$store.status.msg" id="status"></div>
       <button class="btn" id="refresh-btn" onclick="forceRefresh()">Refresh</button>
     </div>
   </header>
@@ -78,6 +79,12 @@
   </template>
 
   <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.store('status', {msg: "", error: ""});
+      loadBoard();
+      setInterval(loadBoard, REFRESH_MS);
+    })
+
     const COLUMNS = ["backlog", "ready", "inprogress"];
     const REFRESH_MS = 600000;
 
@@ -419,11 +426,11 @@
     }
 
     function setStatus(msg) {
-      document.getElementById("status").textContent = msg;
+      Alpine.store("status").msg = msg;
     }
 
     function setError(msg) {
-      document.getElementById("error").textContent = msg;
+      Alpine.store("status").error = msg;
     }
 
     function forceRefresh() {
@@ -501,8 +508,6 @@
       });
     });
 
-    loadBoard();
-    setInterval(loadBoard, REFRESH_MS);
   </script>
 </body>
 </html>
