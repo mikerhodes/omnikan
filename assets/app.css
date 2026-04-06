@@ -67,6 +67,7 @@ header h1 {
 
 .card.dragging { opacity: 0.4; cursor: grabbing; }
 
+.column.active { flex: 2; }
 .column.active .card { color: var(--text-active); }
 
 .card.done { opacity: 0.45; }
