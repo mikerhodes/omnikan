@@ -30,21 +30,45 @@
       </div>
       <div class="cards" id="cards-backlog">
 
+
         <template x-for="card in board[key]" id="tmpl-card">
-          <div class="card" draggable="true">
-            <input type="checkbox" class="card-check" title="Mark complete">
-            <div class="card-body">
-              <div x-text="card.name" class="card-name"></div>
-              <div x-text="card.note" class="card-note"></div>
+        <div>
+
+          <template x-if="!card.editing">
+            <div class="card" draggable="true">
+              <input type="checkbox" class="card-check" title="Mark complete">
+              <div class="card-body">
+                <div x-text="card.name" class="card-name"></div>
+                <div x-text="card.note" class="card-note"></div>
+              </div>
+              <div class="card-actions">
+                <button class="btn" title="Edit task"
+                  @click="startEdit(card)">Edit</button>
+                <button class="btn" title="Delete task"
+                  @click="deleteTask(card)">Delete</button>
+              </div>
             </div>
-            <div class="card-actions">
-              <button class="btn" title="Edit task">Edit</button>
-              <button class="btn" title="Delete task">Delete</button>
+          </template>
+
+          <template x-if="card.editing">
+            <div class="card" draggable="false">
+              <div class="card-body">
+                <input type="text" class="form-input"
+                  x-model="card.draft.name"><br/>
+                <textarea class="form-textarea" rows="6"
+                  x-model="card.draft.note"></textarea><br/>
+                <button class="btn save-btn" title="Save task"
+                  @click="saveEdit(card)" >Save</button>
+                <button class="btn cancel-btn"
+                  @click="cancelEdit(card)">Cancel</button>
+              </div>
             </div>
-          </div>
+          </template>
+
+        </div>
         </template>
 
-        <template x-if="board['backlog'].length == 0" id="tmpl-empty">
+        <template x-if="board[key].length == 0" id="tmpl-empty">
           <div class="empty">No tasks</div>
         </template>
 
@@ -100,6 +124,11 @@
             }
             const result = await response.json();
             console.log(result);
+            for (const col of Object.keys(this.columns)) {
+              for (const card of result[col] ?? []) {
+                card.editing = false;
+              }
+            }
             this.board = result;
             setStatus("Last updated: " + new Date().toLocaleTimeString());
           } catch (error) {
@@ -107,6 +136,55 @@
             setStatus("");
             setError("Failed to load board: " + error.message);
           }
+        },
+
+        async deleteTask(card) {
+          try {
+            const response = await fetch("/api/delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: card.id })
+            });
+            if (!response.ok) {
+              throw new Error(`Response status: ${response.status}`);
+            }
+            // TODO remove card locally instead
+            this.loadBoard();
+          } catch (error) {
+            console.error(error.message);
+            setStatus("");
+            setError("Failed to delete task: " + error.message);
+          }
+        },
+
+        startEdit(card) {
+          card.draft = {name: card.name, note: card.note};
+          card.editing = true;
+        },
+
+        cancelEdit(card) {
+          card.draft = {};
+          card.editing = false;
+        },
+
+        saveEdit(card) {
+          card.name = card.draft.name
+          card.note = card.draft.note
+          card.draft = {};
+          card.editing = false;
+
+          fetch("/api/edit", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: card.id, name: card.name, note: card.note })
+          })
+            .then(function(r) {
+              if (!r.ok) throw new Error("HTTP " + r.status);
+            })
+            .catch(function(err) {
+              setError("Failed to edit task: " + err.message);
+              loadBoard();
+            });
         }
       }));
     });
