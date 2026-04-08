@@ -41,9 +41,13 @@
         <div>
 
           <template x-if="!card.editing">
-            <div class="card" draggable="true"
+            <div class="card"
+              :draggable="!card.done"
+              :class="card.done && 'done'"
               @dragstart="onDragStart($event, card, key)">
-              <input type="checkbox" class="card-check" title="Mark complete">
+              <input type="checkbox" class="card-check" title="Mark complete"
+                @change="onCardCheckChange($event, card)"
+                @checked="card.done">
               <div class="card-body">
                 <div x-text="card.name" class="card-name"></div>
                 <div x-text="card.note" class="card-note"></div>
@@ -134,6 +138,7 @@
             for (const col of Object.keys(this.columns)) {
               for (const card of result[col] ?? []) {
                 card.editing = false;
+                card.done = false;
               }
             }
             this.board = result;
@@ -242,6 +247,56 @@
               setError("Failed to move task: " + err.message);
               loadBoard();
             });
+        },
+
+        completionTimers: {},
+
+        onCardCheckChange(e, card) {
+          card.done = !card.done;
+
+          if (card.done) {
+            fetch("/api/complete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: card.id })
+            })
+              .then(function(r) {
+                if (!r.ok) throw new Error("HTTP " + r.status);
+              })
+              .catch(function(err) {
+                setError("Failed to complete task: " + err.message);
+                card.done = false;
+              });
+
+            // After 60s, remove from board
+            this.completionTimers[card.id] = setTimeout(function() {
+              delete this.completionTimers[card.id];
+              // remove from board
+              for (const [col, cards] of Object.entries(this.board)) {
+                  this.board[col] = cards.filter(c => c.id !== card.id);
+              }
+            }, 60000);
+
+          } else {
+            // Undo: cancel the removal timer and mark incomplete
+            if (this.completionTimers[card.id]) {
+              clearTimeout(this.completionTimers[card.id]);
+              delete this.completionTimers[card.id];
+            }
+
+            fetch("/api/incomplete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: card.id })
+            })
+              .then(function(r) {
+                if (!r.ok) throw new Error("HTTP " + r.status);
+              })
+              .catch(function(err) {
+                setError("Failed to undo completion: " + err.message);
+                this.loadBoard();
+              });
+          }
         },
       }));
     });
