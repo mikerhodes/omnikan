@@ -209,6 +209,16 @@ func (c *writeThroughCache) moveTask(id string, newCol string) error {
 		return fmt.Errorf("swapping tag failed: %w", err)
 	}
 
+	// cached task is now out of date
+	t, err := omnifocus.GetTask(id)
+	if err != nil {
+		return fmt.Errorf("swapping tag failed: %w", err)
+	}
+	c.tasks[id] = &cachedTask{
+		task: t,
+		col:  newCol,
+	}
+
 	c.board = moveBoardTask(c.board, ct.task, ct.col, newCol)
 
 	return nil
@@ -276,13 +286,13 @@ func (c *writeThroughCache) editTask(id, name, note string) (*omnifocus.Task, er
 	if err != nil {
 		return nil, err
 	}
-	
+
 	if ct, ok := c.tasks[id]; ok {
 		ct.task.Name = task.Name
 		ct.task.Note = task.Note
 		c.board = updateBoardTask(c.board, task, ct.col)
 	}
-	
+
 	return &task, nil
 }
 
