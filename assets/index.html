@@ -148,8 +148,9 @@
             if (!response.ok) {
               throw new Error(`Response status: ${response.status}`);
             }
-            // TODO remove card locally instead
-            this.loadBoard();
+            for (const [col, cards] of Object.entries(this.board)) {
+                this.board[col] = cards.filter(c => c.id !== card.id);
+            }
           } catch (error) {
             console.error(error.message);
             setStatus("");
