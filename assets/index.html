@@ -23,19 +23,26 @@
 
   <div x-data="kanban" id="board">
     <template x-for="(value, key) in board">
-    <div class="column panel" :class="key == 'inprogress' && 'active'" :id="'col-' + key">
+    <div class="column panel"
+      :class="key == 'inprogress' && 'active'"
+      :id="'col-' + key"
+      @drop="onDrop($event, key)"
+      @dragover="onColDragOver($event, key)"
+      @dragleave="onColDragLeave($event, key)">
+
       <div class="column-header panel-title">
         <span x-text="columns[key]">Backlog</span>
-        <span x-text="board[key].length" class="badge" id="cnt-backlog">0</span>
+        <span x-text="board[key].length" class="badge">0</span>
       </div>
-      <div class="cards" id="cards-backlog">
 
+      <div class="cards">
 
         <template x-for="card in board[key]" id="tmpl-card">
         <div>
 
           <template x-if="!card.editing">
-            <div class="card" draggable="true">
+            <div class="card" draggable="true"
+              @dragstart="onDragStart($event, card, key)">
               <input type="checkbox" class="card-check" title="Mark complete">
               <div class="card-body">
                 <div x-text="card.name" class="card-name"></div>
@@ -186,7 +193,56 @@
               setError("Failed to edit task: " + err.message);
               loadBoard();
             });
-        }
+        },
+
+        onColDragOver(e, col) {
+          e.preventDefault();
+          // TODO these getElementById feel wrong.
+          const col_el = document.getElementById("col-" + col);
+          col_el.classList.add("drag-over");
+        },
+        onColDragLeave(e, col) {
+          const col_el = document.getElementById("col-" + col);
+          if (!col_el.contains(e.relatedTarget)) {
+            col_el.classList.remove("drag-over");
+          }
+        },
+
+        onDragStart(event, card, fromCol) {
+          this.dragging = { card, fromCol };
+          event.dataTransfer.effectAllowed = 'move';
+        },
+
+        onDrop(event, toCol) {
+          if (!this.dragging) return;
+          const { card, fromCol } = this.dragging;
+
+          const col_el = document.getElementById("col-" + toCol);
+          col_el.classList.remove("drag-over");
+
+          if (fromCol === toCol) return;
+
+          // Remove from source column
+          this.board[fromCol] = this.board[fromCol].filter(c => c.id !== card.id);
+
+          // Add to destination column
+          this.board[toCol] = [...(this.board[toCol] ?? []), card];
+
+          this.dragging = null;
+
+          fetch("/api/move", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: card.id, newCol: toCol })
+          })
+            .then(function(r) {
+              if (!r.ok) throw new Error("HTTP " + r.status);
+            })
+            .catch(function(err) {
+              setError("Failed to move task: " + err.message);
+              loadBoard();
+            });
+        },
       }));
     });
 
