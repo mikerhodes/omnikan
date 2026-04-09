@@ -184,6 +184,12 @@
             });
         },
 
+        removeCard(card) {
+          for (const [col, cards] of Object.entries(this.board)) {
+              this.board[col] = cards.filter(c => c.id !== card.id);
+          }
+        },
+
         async deleteTask(card) {
           try {
             const response = await fetch("/api/delete", {
@@ -194,9 +200,7 @@
             if (!response.ok) {
               throw new Error(`Response status: ${response.status}`);
             }
-            for (const [col, cards] of Object.entries(this.board)) {
-                this.board[col] = cards.filter(c => c.id !== card.id);
-            }
+            this.removeCard(card);
           } catch (error) {
             console.error(error.message);
             setStatus("");
@@ -288,10 +292,7 @@
             // After 60s, remove from board
             this.completionTimers[card.id] = setTimeout(function() {
               delete this.completionTimers[card.id];
-              // remove from board
-              for (const [col, cards] of Object.entries(this.board)) {
-                  this.board[col] = cards.filter(c => c.id !== card.id);
-              }
+              this.removeCard(card);
             }, 60000);
 
           } else {
