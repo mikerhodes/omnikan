@@ -86,9 +86,12 @@
         </template>
 
       </div>
-      <div class="add-task" id="add-backlog">
-        <textarea class="form-textarea" id="add-input-backlog" placeholder="Add task…" rows="2"></textarea>
-        <button class="btn add-btn" title="Add task">+</button>
+      <div class="add-task" id="add-backlog" x-data="{newTask: ''}">
+        <textarea class="form-textarea" id="add-input-backlog"
+          placeholder="Add task…" rows="2"
+          x-model="newTask"></textarea>
+        <button class="btn add-btn" title="Add task"
+          @click="addTask(key, newTask)">+</button>
       </div>
     </div>
     </template>
@@ -150,6 +153,35 @@
             setStatus("");
             setError("Failed to load board: " + error.message);
           }
+        },
+
+        // addTask adds task name to a column
+        addTask(col, name) {
+          console.log(col, name)
+          setStatus("Adding item…");
+          const b = this.board;
+          fetch("/api/add", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: name, col: col })
+          })
+            .then(function(r) {
+              if (!r.ok) throw new Error("HTTP " + r.status);
+              return r.json();
+            })
+            .then(function(task) {
+              b[col].unshift({
+                id: task.id,
+                name: task.name,
+                note: task.note,
+                added: task.added,
+                done: false,
+                editing: false,
+              })
+            })
+            .catch(function(err) {
+              setError("Failed to add task: " + err.message);
+            });
         },
 
         async deleteTask(card) {
