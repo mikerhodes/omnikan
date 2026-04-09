@@ -191,6 +191,7 @@
         },
 
         async deleteTask(card) {
+          this.removeCard(card);
           try {
             const response = await fetch("/api/delete", {
               method: "POST",
@@ -200,11 +201,11 @@
             if (!response.ok) {
               throw new Error(`Response status: ${response.status}`);
             }
-            this.removeCard(card);
           } catch (error) {
             console.error(error.message);
             setStatus("");
             setError("Failed to delete task: " + error.message);
+            this.loadBoard(false);
           }
         },
 
