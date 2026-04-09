@@ -24,11 +24,13 @@
   <div x-data="kanban" id="board">
     <template x-for="(value, key) in board">
     <div class="column panel"
-      :class="key == 'inprogress' && 'active'"
+      x-data="{dragCount: 0}"
+      :class="{ 'active': key == 'inprogress', 'drag-over': dragCount > 0}"
       :id="'col-' + key"
       @drop="onDrop($event, key)"
-      @dragover="onColDragOver($event, key)"
-      @dragleave="onColDragLeave($event, key)">
+      @dragover.prevent,
+      @dragenter="dragCount++"
+      @dragleave="dragCount--">
 
       <div class="column-header panel-title">
         <span x-text="columns[key]">Backlog</span>
@@ -200,19 +202,6 @@
             });
         },
 
-        onColDragOver(e, col) {
-          e.preventDefault();
-          // TODO these getElementById feel wrong.
-          const col_el = document.getElementById("col-" + col);
-          col_el.classList.add("drag-over");
-        },
-        onColDragLeave(e, col) {
-          const col_el = document.getElementById("col-" + col);
-          if (!col_el.contains(e.relatedTarget)) {
-            col_el.classList.remove("drag-over");
-          }
-        },
-
         onDragStart(event, card, fromCol) {
           this.dragging = { card, fromCol };
           event.dataTransfer.effectAllowed = 'move';
@@ -221,9 +210,7 @@
         onDrop(event, toCol) {
           if (!this.dragging) return;
           const { card, fromCol } = this.dragging;
-
-          const col_el = document.getElementById("col-" + toCol);
-          col_el.classList.remove("drag-over");
+          this.dragging = null;
 
           if (fromCol === toCol) return;
 
@@ -232,8 +219,6 @@
 
           // Add to destination column
           this.board[toCol] = [...(this.board[toCol] ?? []), card];
-
-          this.dragging = null;
 
           fetch("/api/move", {
             method: "POST",
