@@ -27,8 +27,8 @@
       x-data="{dragCount: 0}"
       :class="{ 'active': key == 'inprogress', 'drag-over': dragCount > 0}"
       :id="'col-' + key"
-      @drop="onDrop($event, key)"
-      @dragover.prevent,
+      @drop="dragCount--; onDrop($event, key)"
+      @dragover.prevent="",
       @dragenter="dragCount++"
       @dragleave="dragCount--">
 
