@@ -44,7 +44,7 @@
         <template x-for="card in cardsWithSectionDividers(key)">
         <div>
 
-          <template x-if="card._divider"></div>
+          <template x-if="card._divider">
             <div class="section-divider" x-text="card.label"></div>
           </template>
 
@@ -55,7 +55,7 @@
               @dragstart="onDragStart($event, card, key)">
               <input type="checkbox" class="card-check" title="Mark complete"
                 @change="onCardCheckChange($event, card)"
-                @checked="card.done">
+                :checked="card.done">
               <div class="card-body">
                 <div x-text="card.name" class="card-name"></div>
                 <div x-html="linkify(escapeHtml(card.note))" class="card-note"></div>
@@ -96,7 +96,7 @@
         <input class="form-input" id="add-input-backlog"
           placeholder="Add task…" rows="2"
           x-model="newTask"
-          @keyup.enter.prevent="addTask(key, newTask); newTask='';"></textarea>
+          @keyup.enter.prevent="addTask(key, newTask); newTask='';"/>
         <button class="btn add-btn" title="Add task"
           @click="addTask(key, newTask); newTask='';">+</button>
       </div>
