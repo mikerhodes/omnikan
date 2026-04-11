@@ -17,11 +17,13 @@
     <div x-data id="status-bar">
       <div x-text="$store.status.error" id="error"></div>
       <div x-text="$store.status.msg" id="status"></div>
-      <button class="btn" id="refresh-btn" onclick="forceRefresh()">Refresh</button>
+      <button class="btn refresh-btn"
+        @click="$dispatch('refresh_board')">Refresh</button>
     </div>
   </header>
 
   <div x-data="kanban" id="board">
+    <template x-data @refresh_board.window="loadBoard(true)"></template>
     <template x-for="(value, key) in board">
     <div class="column panel"
       x-data="{dragCount: 0}"
