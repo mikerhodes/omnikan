@@ -20,8 +20,7 @@ document.addEventListener('alpine:init', () => {
     },
 
     async loadBoard(reloadFromOmnifocus) {
-      setError("");
-      setStatus(reloadFromOmnifocus ? "Refreshing…" : "Loading…");
+      setStatus("Loading board…");
       const url = reloadFromOmnifocus ? "/api/board?force=true" : "/api/board";
       try {
         const response = await fetch(url);
@@ -29,7 +28,6 @@ document.addEventListener('alpine:init', () => {
           throw new Error(`Response status: ${response.status}`);
         }
         const result = await response.json();
-        console.log(result);
         for (const col of Object.keys(this.columns)) {
           for (const card of result[col] ?? []) {
             card.editing = false;
@@ -40,7 +38,6 @@ document.addEventListener('alpine:init', () => {
         setStatus("Last updated: " + new Date().toLocaleTimeString());
       } catch (error) {
         console.error(error.message);
-        setStatus("");
         setError("Failed to load board: " + error.message);
       }
     },
@@ -53,7 +50,7 @@ document.addEventListener('alpine:init', () => {
       const cards = this.board[col];
       let display = [];
 
-      currentSection = "";
+      let currentSection = "";
       for (const c of cards) {
         const added = c.added && new Date(c.added);
         const section = added > cutoff30 ? null
@@ -72,29 +69,28 @@ document.addEventListener('alpine:init', () => {
 
     // addTask adds task name to a column
     addTask(col, name) {
-      console.log(col, name)
       setStatus("Adding item…");
-      const b = this.board;
       fetch("/api/add", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name, col: col })
       })
-        .then(function(r) {
+        .then((r) => {
           if (!r.ok) throw new Error("HTTP " + r.status);
           return r.json();
         })
-        .then(function(task) {
-          b[col].unshift({
+        .then((task) => {
+          this.board[col].unshift({
             id: task.id,
             name: task.name,
             note: task.note,
             added: new Date(),
             done: false,
             editing: false,
-          })
+          });
+          setStatus("Last updated: " + new Date().toLocaleTimeString());
         })
-        .catch(function(err) {
+        .catch((err) => {
           setError("Failed to add task: " + err.message);
         });
     },
@@ -105,23 +101,21 @@ document.addEventListener('alpine:init', () => {
       }
     },
 
-    async deleteTask(card) {
+    deleteTask(card) {
       this.removeCard(card);
-      try {
-        const response = await fetch("/api/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: card.id })
+      fetch("/api/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: card.id })
+      })
+        .then((r) => {
+          if (!r.ok) throw new Error("HTTP " + r.status);
+        })
+        .catch((err) => {
+          console.error(err.message);
+          setError("Failed to delete task: " + err.message);
+          this.loadBoard(false);
         });
-        if (!response.ok) {
-          throw new Error(`Response status: ${response.status}`);
-        }
-      } catch (error) {
-        console.error(error.message);
-        setStatus("");
-        setError("Failed to delete task: " + error.message);
-        this.loadBoard(false);
-      }
     },
 
     startEdit(card) {
@@ -145,12 +139,12 @@ document.addEventListener('alpine:init', () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: card.id, name: card.name, note: card.note })
       })
-        .then(function(r) {
+        .then((r) => {
           if (!r.ok) throw new Error("HTTP " + r.status);
         })
-        .catch(function(err) {
+        .catch((err) => {
           setError("Failed to edit task: " + err.message);
-          loadBoard();
+          this.loadBoard(false);
         });
     },
 
@@ -177,58 +171,62 @@ document.addEventListener('alpine:init', () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: card.id, newCol: toCol })
       })
-        .then(function(r) {
+        .then((r) => {
           if (!r.ok) throw new Error("HTTP " + r.status);
         })
-        .catch(function(err) {
+        .catch((err) => {
           setError("Failed to move task: " + err.message);
-          loadBoard();
+          this.loadBoard(false);
         });
     },
 
     completionTimers: {},
 
     onCardCheckChange(e, card) {
-      card.done = !card.done;
+      card.done = e.target.checked;
+
+      const clearCompletionTimer = () => {
+        if (this.completionTimers[card.id]) {
+          clearTimeout(this.completionTimers[card.id]);
+          delete this.completionTimers[card.id];
+        }
+      };
 
       if (card.done) {
+        // After 60s, remove from board
+        this.completionTimers[card.id] = setTimeout(() => {
+          delete this.completionTimers[card.id];
+          this.removeCard(card);
+        }, 60000);
+
         fetch("/api/complete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: card.id })
         })
-          .then(function(r) {
+          .then((r) => {
             if (!r.ok) throw new Error("HTTP " + r.status);
           })
-          .catch(function(err) {
+          .catch((err) => {
             setError("Failed to complete task: " + err.message);
-            card.done = false;
+            clearCompletionTimer();
+            this.loadBoard(false);
           });
-
-        // After 60s, remove from board
-        this.completionTimers[card.id] = setTimeout(function() {
-          delete this.completionTimers[card.id];
-          this.removeCard(card);
-        }, 60000);
-
       } else {
         // Undo: cancel the removal timer and mark incomplete
-        if (this.completionTimers[card.id]) {
-          clearTimeout(this.completionTimers[card.id]);
-          delete this.completionTimers[card.id];
-        }
+        clearCompletionTimer();
 
         fetch("/api/incomplete", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: card.id })
         })
-          .then(function(r) {
+          .then((r) => {
             if (!r.ok) throw new Error("HTTP " + r.status);
           })
-          .catch(function(err) {
+          .catch((err) => {
             setError("Failed to undo completion: " + err.message);
-            this.loadBoard();
+            this.loadBoard(false);
           });
       }
     },
@@ -255,9 +253,11 @@ function linkify(escaped) {
 }
 
 function setStatus(msg) {
+  Alpine.store("status").error = "";
   Alpine.store("status").msg = msg;
 }
 
 function setError(msg) {
+  Alpine.store("status").msg = "";
   Alpine.store("status").error = msg;
 }
