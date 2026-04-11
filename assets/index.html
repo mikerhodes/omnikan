@@ -39,10 +39,14 @@
 
       <div class="cards">
 
-        <template x-for="card in board[key]" id="tmpl-card">
+        <template x-for="card in cardsWithSectionDividers(key)">
         <div>
 
-          <template x-if="!card.editing">
+          <template x-if="card._divider"></div>
+            <div class="section-divider" x-text="card.label"></div>
+          </template>
+
+          <template x-if="!card._divider && !card.editing">
             <div class="card"
               :draggable="!card.done"
               :class="card.done && 'done'"
@@ -63,7 +67,7 @@
             </div>
           </template>
 
-          <template x-if="card.editing">
+          <template x-if="!card._divider && card.editing">
             <div class="card" draggable="false">
               <div class="card-body">
                 <input type="text" class="form-input"
@@ -153,6 +157,31 @@
             setStatus("");
             setError("Failed to load board: " + error.message);
           }
+        },
+
+        // cardsWithSectionDividers inserts headers into the
+        // cards column for 30 days old etc.
+        cardsWithSectionDividers(col) {
+          const cutoff30 = new Date(Date.now() - THIRTY_DAYS_MS);
+          const cutoff90 = new Date(Date.now() - NINETY_DAYS_MS);
+          const cards = this.board[col];
+          let display = [];
+
+          currentSection = "";
+          for (const c of cards) {
+            const added = c.added && new Date(c.added);
+            const section = added > cutoff30 ? null
+              : added > cutoff90 ? "Older than 30 days"
+              : "Older than 90 days";
+            if (section != currentSection) {
+              currentSection = section;
+              display.push({_divider: true, label: section})
+            }
+
+            display.push(c);
+          }
+
+          return display;
         },
 
         // addTask adds task name to a column
