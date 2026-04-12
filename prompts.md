@@ -1,3 +1,9 @@
+# What is this
+
+This is the first few prompts I used to build out the bones of the application.
+
+I stopped recording them at some point, but they are a useful thing to look back at.
+
 # 1
 
 Using the code at https://github.com/mikerhodes/github-to-omnifocus as an example, plan
