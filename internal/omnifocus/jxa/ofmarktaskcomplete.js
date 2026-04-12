@@ -1,12 +1,25 @@
+// @ts-check
 // Mark a task complete in OmniFocus.
 // Accepts { "id": "..." } via OSA_ARGS.
+//
+// Call it:
+//   set -gx OSA_ARGS '{"id":"abc123"}'
+//   osascript -l JavaScript ofmarktaskcomplete.js
+(() => {
+  "use strict";
 
-ObjC.import('stdlib')
-var args = JSON.parse($.getenv('OSA_ARGS'))
+  ObjC.import('stdlib')
+  const argsJson = $.getenv('OSA_ARGS')
 
-// @ts-ignore
-var app = Application("OmniFocus")
-var task = app.defaultDocument.flattenedTasks.whose({ id: args.id })[0]
-app.markComplete(task)
+  const script = (jsonString) => {
+    const args = JSON.parse(jsonString)
+    const t = Task.byIdentifier(args.id)
+    if (t === null) throw new Error("task not found: " + args.id)
+    t.markComplete()
+    return JSON.stringify({ id: t.id.primaryKey, name: t.name })
+  }
 
-JSON.stringify({ id: task.id(), name: task.name() })
+  return Application("OmniFocus").evaluateJavascript(
+    `(${script})(${JSON.stringify(argsJson)})`
+  )
+})()

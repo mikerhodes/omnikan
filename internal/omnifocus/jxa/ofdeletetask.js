@@ -1,12 +1,19 @@
 // Delete a task permanently from OmniFocus.
 // Accepts { "id": "..." } via OSA_ARGS.
+(() => {
+  "use strict";
 
-ObjC.import('stdlib')
-var args = JSON.parse($.getenv('OSA_ARGS'))
+  ObjC.import('stdlib')
+  const argsJson = $.getenv('OSA_ARGS')
 
-// @ts-ignore
-var app = Application("OmniFocus")
-var task = app.defaultDocument.flattenedTasks.whose({ id: args.id })[0]
-app.delete(task)
+  const script = (jsonArgs) => {
+    const args = JSON.parse(jsonArgs);
+    const task = Task.byIdentifier(args.id);
+    deleteObject(task);
+    return JSON.stringify({ id: args.id })
+  }
 
-JSON.stringify({ id: args.id })
+  return Application("OmniFocus").evaluateJavascript(
+    `(${script})(${JSON.stringify(argsJson)})`
+  )
+})()

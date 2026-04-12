@@ -6,19 +6,31 @@
 //   osascript -l JavaScript ofaddtask.js | jq .
 //
 // Returns { "id": "...", "name": "...", "note": "" }
+//
+(() => {
+  "use strict";
 
-ObjC.import('stdlib')
-var args = JSON.parse($.getenv('OSA_ARGS'))
+  ObjC.import('stdlib')
+  const argsJson = $.getenv('OSA_ARGS')
 
-// @ts-ignore
-var app = Application("OmniFocus")
-var doc = app.defaultDocument
+  const script = (jsonArgs) => {
+    const args = JSON.parse(jsonArgs)
 
-var project = doc.flattenedProjects.whose({ id: args.projectId })[0]
-var tag = doc.flattenedTags.whose({ name: args.tag })[0]
+    const project = Project.byIdentifier(args.projectId);
+    const tag = flattenedTags.byName(args.tag) || new Tag(args.tag);
 
-var task = app.Task({ name: args.name })
-project.tasks.push(task)
-app.add(tag, { to: task.tags })
+    let task = new Task(args.name, project);
+    task.addTag(tag);
 
-JSON.stringify({ id: task.id(), name: task.name(), note: task.note(), tags: task.tags().map(function(tg) { return tg.name() }) })
+    return JSON.stringify({
+      id: task.id.primaryKey,
+      name: task.name,
+      note: task.note,
+      tags: task.tags.map(tg => tg.name)
+    })
+  }
+
+  return Application("OmniFocus").evaluateJavascript(
+    `(${script})(${JSON.stringify(argsJson)})`
+  )
+})()

@@ -1,18 +1,24 @@
+// @ts-check
 // Return the ID of a project by name.
-// Accepts { "projectName": "My Project" } as JSON in OSA_ARGS.
-// Returns JSON: { "id": "abc123" }
-// Exits with a non-zero status if the project is not found.
+// Accepts { "projectName": "My Project" } via OSA_ARGS.
+//
+// Call it:
+//   set -gx OSA_ARGS '{"projectName":"My Project"}'
+//   osascript -l JavaScript ofprojectid.js | jq .
+(() => {
+  "use strict";
 
-ObjC.import('stdlib')
-var args = JSON.parse($.getenv('OSA_ARGS'))
+  ObjC.import('stdlib')
+  const argsJson = $.getenv('OSA_ARGS')
 
-// @ts-ignore
-var ofApp = Application("OmniFocus")
-var ofDoc = ofApp.defaultDocument
+  const script = (jsonString) => {
+    const args = JSON.parse(jsonString)
+    const proj = flattenedProjects.byName(args.projectName)
+    if (proj === null) throw new Error("project not found: " + args.projectName)
+    return JSON.stringify({ id: proj.id.primaryKey })
+  }
 
-var matches = ofDoc.flattenedProjects.whose({ name: args.projectName })
-if (matches.length === 0) {
-    throw new Error("project not found: " + args.projectName)
-}
-
-JSON.stringify({ id: matches()[0].id() })
+  return Application("OmniFocus").evaluateJavascript(
+    `(${script})(${JSON.stringify(argsJson)})`
+  )
+})()

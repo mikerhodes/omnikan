@@ -1,43 +1,43 @@
+// @ts-check
 // Return all incomplete tasks that have a given tag and belong to a given project.
-// Accepts { "tag": "backlog", "projectId": "abc123" } as JSON in OSA_ARGS.
+// Accepts { "tag": "backlog", "projectId": "abc123" } via OSA_ARGS.
 //
 // Call it:
-//   set -gx OSA_ARGS '{"tag": "backlog", "projectId": "abc123"}'
+//   set -gx OSA_ARGS '{"tag":"backlog","projectId":"abc123"}'
 //   osascript -l JavaScript oftasksfortag.js | jq .
-//
-// Returns JSON array:
-// [
-//   { "id": "iAKv1Uo8XqW", "name": "My task title", "note": "..." },
-//   ...
-// ]
-//
-// Uses evaluateJavascript() to run filtering in the OmniJS context, which avoids
-// per-property JXA bridge crossings (~1ms each). tagsMatching() + tag.tasks is
-// fast (~150ms) because it starts from a small, pre-filtered set.
+(() => {
+  "use strict";
 
-ObjC.import('stdlib');
-var args = JSON.parse($.getenv('OSA_ARGS'));
+  ObjC.import('stdlib')
+  const argsJson = $.getenv('OSA_ARGS')
 
-// @ts-ignore
-var ofApp = Application("OmniFocus");
+  const script = (jsonString) => {
+    const args = JSON.parse(jsonString)
+    const tag = flattenedTags.byName(args.tag)
+    if (!tag) throw new Error("tag not found: " + args.tag)
 
-var script = `
-    var tag = tagsMatching(${JSON.stringify(args.tag)})[0];
-    var tasks = tag.tasks.filter(function(t) {
-        if ([Task.Status.Completed, Task.Status.Dropped].includes(t.taskStatus)) {
-            return false;
-        }
-        return t.containingProject && t.containingProject.id.primaryKey === ${JSON.stringify(args.projectId)};
-    }).map(function(t) {
-        return {
-            id: t.id.primaryKey,
-            name: t.name,
-            note: t.note,
-            added: t.added,
-            tags: t.tags.map(function(tg) { return tg.name; })
-        };
-    });
-    JSON.stringify(tasks);
-`;
+    const activeStates = [
+      Task.Status.Available,
+      Task.Status.DueSoon,
+      Task.Status.Next,
+      Task.Status.Overdue,
+      Task.Status.Blocked
+    ]
+    return JSON.stringify(tag.tasks
+      .filter(t => activeStates.includes(t.taskStatus))
+      .filter(t => {
+        return t.containingProject &&
+          t.containingProject.id.primaryKey === args.projectId
+      }).map(t => ({
+        id: t.id.primaryKey,
+        name: t.name,
+        note: t.note,
+        added: t.added,
+        tags: t.tags.map(tg => tg.name)
+      })))
+  }
 
-ofApp.evaluateJavascript(script);
+  return Application("OmniFocus").evaluateJavascript(
+    `(${script})(${JSON.stringify(argsJson)})`
+  )
+})()
