@@ -92,12 +92,16 @@
         </template>
 
       </div>
-      <div class="add-task" id="add-backlog" x-data="{newTask: ''}">
+      <div class="add-task" id="add-backlog"
+        x-data="{newTask: '', focused: false}">
         <input class="form-input" id="add-input-backlog"
           placeholder="Add task…" rows="2"
           x-model="newTask"
+          @focus="focused = true"
+          @blur="focused = false"
           @keyup.enter.prevent="addTask(key, newTask); newTask='';"/>
-        <button class="btn add-btn" title="Add task"
+        <button class="btn add-btn btn-primary" title="Add task"
+          x-show="focused"
           @click="addTask(key, newTask); newTask='';">+</button>
       </div>
     </div>
