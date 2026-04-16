@@ -24,6 +24,7 @@
     ]
     return JSON.stringify(proj.tasks
       .filter(t => activeStates.includes(t.taskStatus))
+      .filter(t => t.deferDate <= new Date())
       .map(t => ({
         id: t.id.primaryKey,
         name: t.name,

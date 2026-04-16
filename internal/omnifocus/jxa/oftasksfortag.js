@@ -25,6 +25,7 @@
     ]
     return JSON.stringify(tag.tasks
       .filter(t => activeStates.includes(t.taskStatus))
+      .filter(t => t.deferDate <= new Date())
       .filter(t => {
         return t.containingProject &&
           t.containingProject.id.primaryKey === args.projectId
