@@ -14,12 +14,6 @@ Flags:
 - `-addr` — listen address (default: `localhost:8080`)
 - `-dynamic` — serve assets from disk instead of embedded binary (useful for UI development)
 
-## UI constraints
-
-The page header must stay compact (single line, baseline-aligned). The Ember design
-system's default header is taller — don't adopt that here. The header contains three
-grid cells: app title (left), keyboard shortcut hint (centre), status bar (right).
-
 ## UI behaviour
 
 - Cards move in the DOM immediately (optimistic update); API call fires async
