@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-
 )
 
 var (
@@ -52,7 +51,7 @@ func handleBoard(cache *writeThroughCache) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		err := json.NewEncoder(w).Encode(cache.getBoard())
 		if err != nil {
-			log.Printf("EditTask error: %v", err)
+			log.Printf("handleBoard error: %v", err)
 			return
 		}
 	}
@@ -155,7 +154,7 @@ func handleAdd(cache *writeThroughCache) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(task)
 		if err != nil {
-			log.Printf("AddTask error: %v", err)
+			log.Printf("handleAdd error: %v", err)
 			return
 		}
 	}
@@ -181,7 +180,7 @@ func handleEdit(cache *writeThroughCache) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		err = json.NewEncoder(w).Encode(task)
 		if err != nil {
-			log.Printf("EditTask error: %v", err)
+			log.Printf("handleEdit error: %v", err)
 			return
 		}
 	}
