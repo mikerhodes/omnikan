@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"sort"
@@ -8,6 +9,37 @@ import (
 
 	"github.com/mikerhodes/omnikan/internal/omnifocus"
 )
+
+// Column is a kanban column identifier.
+type Column string
+
+const (
+	ColumnBacklog    Column = omnifocus.TagBacklog
+	ColumnReady      Column = omnifocus.TagReady
+	ColumnInProgress Column = omnifocus.TagInProgress
+)
+
+// parseColumn returns the Column for s, or false if s is not a valid column.
+func parseColumn(s string) (Column, bool) {
+	switch Column(s) {
+	case ColumnBacklog, ColumnReady, ColumnInProgress:
+		return Column(s), true
+	}
+	return "", false
+}
+
+func (c *Column) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	col, ok := parseColumn(s)
+	if !ok {
+		return fmt.Errorf("invalid column: %s", s)
+	}
+	*c = col
+	return nil
+}
 
 //
 // Main data store is a write-through cache to OmniFocus
@@ -45,45 +77,32 @@ type kanbanBoard struct {
 }
 
 // columnForTask returns the kanban column for a task by inspecting its tags.
-// Returns the first tag that matches a kanban column constant, or empty string.
-func columnForTask(t *omnifocus.Task) string {
+// Defaults to TagBacklog: all project tasks should be on the board.
+func columnForTask(t *omnifocus.Task) Column {
 	for _, tag := range t.Tags {
-		if tag == omnifocus.TagBacklog || tag == omnifocus.TagReady || tag == omnifocus.TagInProgress {
-			return tag
+		if col, ok := parseColumn(tag); ok {
+			return col
 		}
 	}
-	// Policy choice: all project tasks should be on board.
-	return omnifocus.TagBacklog
-}
-
-// isValidColumn returns true for the valid kanban columns.
-func isValidColumn(col string) bool {
-	return col == omnifocus.TagBacklog ||
-		col == omnifocus.TagReady ||
-		col == omnifocus.TagInProgress
+	return ColumnBacklog
 }
 
 // column returns a pointer to the board slice for the given column.
-func (b *kanbanBoard) column(col string) *boardColumn {
+func (b *kanbanBoard) column(col Column) *boardColumn {
 	switch col {
-	case omnifocus.TagBacklog:
+	case ColumnBacklog:
 		return &b.Backlog
-	case omnifocus.TagReady:
+	case ColumnReady:
 		return &b.Ready
-	case omnifocus.TagInProgress:
+	default:
 		return &b.InProgress
 	}
-	return nil
 }
 
 // moveTask moves a task from one column slice to another in the board.
-func (b *kanbanBoard) moveTask(t omnifocus.Task, fromCol, toCol string) {
-	if s := b.column(fromCol); s != nil {
-		s.removeTask(t.ID)
-	}
-	if s := b.column(toCol); s != nil {
-		s.addTask(t)
-	}
+func (b *kanbanBoard) moveTask(t omnifocus.Task, fromCol, toCol Column) {
+	b.column(fromCol).removeTask(t.ID)
+	b.column(toCol).addTask(t)
 }
 
 // writeThroughCache holds the in-memory board state and synchronises all
@@ -127,17 +146,7 @@ func (c *writeThroughCache) refresh() error {
 	})
 	for _, t := range tasks {
 		newTasks[t.ID] = &t
-		col := columnForTask(&t)
-		switch col {
-		case omnifocus.TagBacklog:
-			newBoard.Backlog = append(newBoard.Backlog, t)
-		case omnifocus.TagReady:
-			newBoard.Ready = append(newBoard.Ready, t)
-		case omnifocus.TagInProgress:
-			newBoard.InProgress = append(newBoard.InProgress, t)
-		default:
-			panic("Task with unknown tag; should never happen")
-		}
+		newBoard.column(columnForTask(&t)).addTask(t)
 	}
 
 	// Update cache on all successful
@@ -151,10 +160,7 @@ func (c *writeThroughCache) refresh() error {
 
 // moveTask swaps the kanban tag on the task in OmniFocus and moves it to the
 // target column in the cache. No-ops if the task is already in newCol.
-func (c *writeThroughCache) moveTask(id string, newCol string) error {
-	if !isValidColumn(newCol) {
-		return fmt.Errorf("invalid column name %s", newCol)
-	}
+func (c *writeThroughCache) moveTask(id string, newCol Column) error {
 
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
@@ -169,7 +175,7 @@ func (c *writeThroughCache) moveTask(id string, newCol string) error {
 		return nil
 	}
 
-	err := omnifocus.SwapTag(id, currentCol, newCol)
+	err := omnifocus.SwapTag(id, string(currentCol), string(newCol))
 	if err != nil {
 		return fmt.Errorf("swapping tag failed: %w", err)
 	}
@@ -256,15 +262,11 @@ func (c *writeThroughCache) editTask(id, name, note string) (*omnifocus.Task, er
 }
 
 // addTask creates the task in OmniFocus and inserts it into the cache.
-func (c *writeThroughCache) addTask(name string, col string) (*omnifocus.Task, error) {
-	if name == "" || !isValidColumn(col) {
-		return nil, fmt.Errorf("invalid column %s", col)
-	}
-
+func (c *writeThroughCache) addTask(name string, col Column) (*omnifocus.Task, error) {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 
-	t, err := omnifocus.AddTask(name, col, c.projectID)
+	t, err := omnifocus.AddTask(name, string(col), c.projectID)
 	if err != nil {
 		return nil, err
 	}

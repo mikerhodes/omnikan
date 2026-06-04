@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+
 )
 
 var (
@@ -60,7 +61,7 @@ func handleBoard(cache *writeThroughCache) http.HandlerFunc {
 func handleMove(cache *writeThroughCache) http.HandlerFunc {
 	var req struct {
 		ID     string `json:"id"`
-		NewCol string `json:"newCol"`
+		NewCol Column `json:"newCol"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -134,11 +135,15 @@ func handleIncomplete(cache *writeThroughCache) http.HandlerFunc {
 func handleAdd(cache *writeThroughCache) http.HandlerFunc {
 	var req struct {
 		Name string `json:"name"`
-		Col  string `json:"col"`
+		Col  Column `json:"col"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		if req.Name == "" {
+			http.Error(w, "name is required", http.StatusBadRequest)
 			return
 		}
 		task, err := cache.addTask(req.Name, req.Col)
