@@ -99,12 +99,6 @@ func (b *kanbanBoard) column(col Column) *boardColumn {
 	}
 }
 
-// moveTask moves a task from one column slice to another in the board.
-func (b *kanbanBoard) moveTask(t omnifocus.Task, fromCol, toCol Column) {
-	b.column(fromCol).removeTask(t.ID)
-	b.column(toCol).addTask(t)
-}
-
 // writeThroughCache holds the in-memory board state and synchronises all
 // mutations: every write calls OmniFocus first, then updates board and tasks
 // on success, so the cache is never ahead of OmniFocus.
@@ -186,7 +180,8 @@ func (c *writeThroughCache) moveTask(id string, newCol Column) error {
 		return fmt.Errorf("swapping tag failed: %w", err)
 	}
 	c.tasks[id] = &t
-	c.board.moveTask(t, currentCol, newCol)
+	c.board.column(currentCol).removeTask(t.ID)
+	c.board.column(newCol).addTask(t)
 
 	return nil
 }
