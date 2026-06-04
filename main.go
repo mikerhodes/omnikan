@@ -58,7 +58,7 @@ func run(ctx context.Context, args []string) error {
 	log.Printf("Loading board from OmniFocus...")
 	cache := &writeThroughCache{
 		board:     &kanbanBoard{},
-		tasks:     map[string]*cachedTask{},
+		tasks:     map[string]*omnifocus.Task{},
 		projectID: id,
 	}
 	if err := cache.refresh(); err != nil {

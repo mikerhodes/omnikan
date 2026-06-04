@@ -86,11 +86,6 @@ func (b *kanbanBoard) moveTask(t omnifocus.Task, fromCol, toCol string) {
 	}
 }
 
-type cachedTask struct {
-	task omnifocus.Task
-	col  string
-}
-
 // writeThroughCache holds the in-memory board state and synchronises all
 // mutations: every write calls OmniFocus first, then updates board and tasks
 // on success, so the cache is never ahead of OmniFocus.
@@ -100,7 +95,7 @@ type writeThroughCache struct {
 	// cacheMu protects board and tasks.
 	cacheMu sync.Mutex
 	board   *kanbanBoard
-	tasks   map[string]*cachedTask // task ID -> task + current column
+	tasks   map[string]*omnifocus.Task // task ID -> task
 }
 
 // getBoard returns the current cached board snapshot.
@@ -120,7 +115,7 @@ func (c *writeThroughCache) refresh() error {
 		Ready:      []omnifocus.Task{},
 		InProgress: []omnifocus.Task{},
 	}
-	newTasks := map[string]*cachedTask{}
+	newTasks := map[string]*omnifocus.Task{}
 
 	tasks, err := omnifocus.TasksForProject(c.projectID)
 	if err != nil {
@@ -131,8 +126,8 @@ func (c *writeThroughCache) refresh() error {
 		return tasks[i].Added > tasks[j].Added
 	})
 	for _, t := range tasks {
+		newTasks[t.ID] = &t
 		col := columnForTask(&t)
-		newTasks[t.ID] = &cachedTask{task: t, col: col}
 		switch col {
 		case omnifocus.TagBacklog:
 			newBoard.Backlog = append(newBoard.Backlog, t)
@@ -169,11 +164,12 @@ func (c *writeThroughCache) moveTask(id string, newCol string) error {
 		return fmt.Errorf("Invalid ID %s", id)
 	}
 
-	if ct.col == newCol {
+	currentCol := columnForTask(ct)
+	if currentCol == newCol {
 		return nil
 	}
 
-	err := omnifocus.SwapTag(id, ct.col, newCol)
+	err := omnifocus.SwapTag(id, currentCol, newCol)
 	if err != nil {
 		return fmt.Errorf("swapping tag failed: %w", err)
 	}
@@ -183,12 +179,8 @@ func (c *writeThroughCache) moveTask(id string, newCol string) error {
 	if err != nil {
 		return fmt.Errorf("swapping tag failed: %w", err)
 	}
-	c.tasks[id] = &cachedTask{
-		task: t,
-		col:  newCol,
-	}
-
-	c.board.moveTask(ct.task, ct.col, newCol)
+	c.tasks[id] = &t
+	c.board.moveTask(t, currentCol, newCol)
 
 	return nil
 }
@@ -202,8 +194,8 @@ func (c *writeThroughCache) deleteTask(id string) error {
 	if err != nil {
 		return err
 	}
-	if ct, ok := c.tasks[id]; ok {
-		c.board.column(ct.col).removeTask(id)
+	if t, ok := c.tasks[id]; ok {
+		c.board.column(columnForTask(t)).removeTask(id)
 		delete(c.tasks, id)
 	}
 	return nil
@@ -218,8 +210,8 @@ func (c *writeThroughCache) completeTask(id string) error {
 	if err != nil {
 		return err
 	}
-	if ct, ok := c.tasks[id]; ok {
-		c.board.column(ct.col).removeTask(id)
+	if t, ok := c.tasks[id]; ok {
+		c.board.column(columnForTask(t)).removeTask(id)
 		delete(c.tasks, id)
 	}
 	return nil
@@ -239,10 +231,8 @@ func (c *writeThroughCache) uncompleteTask(id string) error {
 	if err != nil {
 		return err
 	}
-	col := columnForTask(&t)
-	ct := &cachedTask{task: t, col: col}
-	c.tasks[t.ID] = ct
-	c.board.column(ct.col).addTask(ct.task)
+	c.tasks[t.ID] = &t
+	c.board.column(columnForTask(&t)).addTask(t)
 	return nil
 }
 
@@ -256,10 +246,10 @@ func (c *writeThroughCache) editTask(id, name, note string) (*omnifocus.Task, er
 		return nil, err
 	}
 
-	if ct, ok := c.tasks[id]; ok {
-		ct.task.Name = task.Name
-		ct.task.Note = task.Note
-		c.board.column(ct.col).updateTask(task)
+	if t, ok := c.tasks[id]; ok {
+		t.Name = task.Name
+		t.Note = task.Note
+		c.board.column(columnForTask(t)).updateTask(task)
 	}
 
 	return &task, nil
@@ -274,12 +264,11 @@ func (c *writeThroughCache) addTask(name string, col string) (*omnifocus.Task, e
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 
-	task, err := omnifocus.AddTask(name, col, c.projectID)
+	t, err := omnifocus.AddTask(name, col, c.projectID)
 	if err != nil {
 		return nil, err
 	}
-	ct := &cachedTask{task: task, col: col}
-	c.tasks[ct.task.ID] = ct
-	c.board.column(col).addTask(task)
-	return &ct.task, nil
+	c.tasks[t.ID] = &t
+	c.board.column(col).addTask(t)
+	return &t, nil
 }
