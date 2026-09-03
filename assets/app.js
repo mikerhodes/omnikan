@@ -2,11 +2,85 @@
 const REFRESH_MS = 600000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
+const COLUMN_KEYS = { "1": "backlog", "2": "ready", "3": "inprogress" };
+
+const SHORTCUTS = [
+  {
+    binding: "j",
+    description: "Select next task",
+    run: board => board.selectAdjacent(1),
+  },
+  {
+    binding: "k",
+    description: "Select previous task",
+    run: board => board.selectAdjacent(-1),
+  },
+  {
+    binding: "([1-3])",
+    description: "Select a column",
+    run: (board, event) => board.selectColumn(COLUMN_KEYS[event.key]),
+  },
+  {
+    binding: "h",
+    description: "Move task left",
+    run: board => board.moveSelected(-1),
+  },
+  {
+    binding: "l",
+    description: "Move task right",
+    run: board => board.moveSelected(1),
+  },
+  {
+    binding: "a",
+    description: "Add a task",
+    run: board => board.focusAddTask(),
+  },
+  {
+    binding: "e",
+    description: "Edit selected task",
+    run: board => board.editSelected(),
+  },
+  {
+    binding: "x",
+    description: "Complete or undo completion",
+    run: board => board.toggleSelectedCompletion(),
+  },
+  {
+    binding: "d d",
+    description: "Delete selected task",
+    run: board => board.deleteSelected(),
+  },
+  {
+    binding: "r",
+    description: "Refresh from OmniFocus",
+    run: board => board.loadBoard(true),
+  },
+  {
+    binding: "[Shift]+?",
+    description: "Show keyboard shortcuts",
+    run: board => { board.showShortcuts = !board.showShortcuts; },
+  },
+  {
+    binding: "Escape",
+    description: "Cancel or clear selection",
+    run: board => board.clearKeyboardState(),
+  },
+  {
+    binding: "$mod+Enter",
+    description: "Save an edit",
+  },
+];
 
 document.addEventListener('alpine:init', () => {
   Alpine.store('status', { msg: "", error: "" });
   Alpine.data("kanban", () => ({
     board: { "backlog": [], "ready": [], "inprogress": [] },
+    selectedColumn: "backlog",
+    selectedTaskID: null,
+    showShortcuts: false,
+    shortcuts: SHORTCUTS,
+    removeKeyboardBindings: null,
+    refreshTimer: null,
     columns: {
       "backlog": "Backlog",
       "ready": "Ready",
@@ -14,9 +88,29 @@ document.addEventListener('alpine:init', () => {
     },
 
     async init() {
+      const bindings = Object.fromEntries(
+        SHORTCUTS
+          .filter(shortcut => shortcut.run)
+          .map(shortcut => [
+            shortcut.binding,
+            event => {
+              event.preventDefault();
+              shortcut.run(this, event);
+            },
+          ])
+      );
+      this.removeKeyboardBindings = window.tinykeys.tinykeys(
+        window,
+        bindings,
+        { timeout: 2000 }
+      );
       await this.loadBoard();
-      // TODO add destroy method clears timer
-      setInterval(() => this.loadBoard(false), REFRESH_MS);
+      this.refreshTimer = setInterval(() => this.loadBoard(false), REFRESH_MS);
+    },
+
+    destroy() {
+      this.removeKeyboardBindings?.();
+      clearInterval(this.refreshTimer);
     },
 
     async loadBoard(reloadFromOmnifocus) {
@@ -35,6 +129,7 @@ document.addEventListener('alpine:init', () => {
           }
         }
         this.board = result;
+        this.ensureSelection();
         setStatus("Last updated: " + new Date().toLocaleTimeString());
       } catch (error) {
         console.error(error.message);
@@ -67,8 +162,89 @@ document.addEventListener('alpine:init', () => {
       return display;
     },
 
+    ensureSelection() {
+      if (!this.selectedTaskID) return;
+      const selectedStillExists = Object.values(this.board)
+        .some(cards => cards.some(card => card.id === this.selectedTaskID));
+      if (!selectedStillExists) {
+        this.selectedTaskID = this.board[this.selectedColumn]?.[0]?.id ?? null;
+      }
+    },
+
+    selectedCard() {
+      return this.board[this.selectedColumn]
+        ?.find(card => card.id === this.selectedTaskID);
+    },
+
+    selectCard(col, card) {
+      this.selectedColumn = col;
+      this.selectedTaskID = card.id;
+    },
+
+    scrollSelectionIntoView() {
+      Alpine.nextTick(() => {
+        document.querySelector("[data-selected='true']")
+          ?.scrollIntoView({ block: "nearest" });
+      });
+    },
+
+    selectColumn(col) {
+      this.selectedColumn = col;
+      this.selectedTaskID = this.board[col]?.[0]?.id ?? null;
+      this.scrollSelectionIntoView();
+    },
+
+    selectAdjacent(offset) {
+      const cards = this.board[this.selectedColumn] ?? [];
+      if (cards.length === 0) {
+        this.selectedTaskID = null;
+        return;
+      }
+
+      const current = cards.findIndex(card => card.id === this.selectedTaskID);
+      const next = current === -1
+        ? (offset > 0 ? 0 : cards.length - 1)
+        : Math.max(0, Math.min(cards.length - 1, current + offset));
+      this.selectedTaskID = cards[next].id;
+      this.scrollSelectionIntoView();
+    },
+
+    focusAddTask() {
+      document.getElementById(`add-input-${this.selectedColumn}`)?.focus();
+    },
+
+    editSelected() {
+      const card = this.selectedCard();
+      if (card) this.startEdit(card);
+    },
+
+    toggleSelectedCompletion() {
+      const card = this.selectedCard();
+      if (card) this.setTaskCompletion(card, !card.done);
+    },
+
+    deleteSelected() {
+      const card = this.selectedCard();
+      if (card) this.deleteTask(card);
+    },
+
+    clearKeyboardState() {
+      this.showShortcuts = false;
+      this.selectedTaskID = null;
+    },
+
+    moveSelected(offset) {
+      const card = this.selectedCard();
+      if (!card) return;
+      const columns = Object.keys(this.columns);
+      const current = columns.indexOf(this.selectedColumn);
+      const target = columns[current + offset];
+      if (target) this.moveTask(card, this.selectedColumn, target);
+    },
+
     // addTask adds task name to a column
     addTask(col, name) {
+      if (!name.trim()) return;
       setStatus("Adding item…");
       fetch("/api/add", {
         method: "POST",
@@ -88,6 +264,8 @@ document.addEventListener('alpine:init', () => {
             done: false,
             editing: false,
           });
+          this.selectedColumn = col;
+          this.selectedTaskID = task.id;
           setStatus("Last updated: " + new Date().toLocaleTimeString());
         })
         .catch((err) => {
@@ -99,6 +277,7 @@ document.addEventListener('alpine:init', () => {
       for (const [col, cards] of Object.entries(this.board)) {
         this.board[col] = cards.filter(c => c.id !== card.id);
       }
+      this.ensureSelection();
     },
 
     deleteTask(card) {
@@ -121,6 +300,9 @@ document.addEventListener('alpine:init', () => {
     startEdit(card) {
       card.draft = { name: card.name, note: card.note };
       card.editing = true;
+      Alpine.nextTick(() => {
+        document.querySelector("[data-editing='true'] input")?.focus();
+      });
     },
 
     cancelEdit(card) {
@@ -158,13 +340,16 @@ document.addEventListener('alpine:init', () => {
       const { card, fromCol } = this.dragging;
       this.dragging = null;
 
+      this.moveTask(card, fromCol, toCol);
+    },
+
+    moveTask(card, fromCol, toCol) {
       if (fromCol === toCol) return;
-
-      // Remove from source column
       this.board[fromCol] = this.board[fromCol].filter(c => c.id !== card.id);
-
-      // Add to destination column
       this.board[toCol] = [...(this.board[toCol] ?? []), card];
+      this.selectedColumn = toCol;
+      this.selectedTaskID = card.id;
+      this.scrollSelectionIntoView();
 
       fetch("/api/move", {
         method: "POST",
@@ -183,7 +368,11 @@ document.addEventListener('alpine:init', () => {
     completionTimers: {},
 
     onCardCheckChange(e, card) {
-      card.done = e.target.checked;
+      this.setTaskCompletion(card, e.target.checked);
+    },
+
+    setTaskCompletion(card, done) {
+      card.done = done;
 
       const clearCompletionTimer = () => {
         if (this.completionTimers[card.id]) {
@@ -192,7 +381,7 @@ document.addEventListener('alpine:init', () => {
         }
       };
 
-      if (card.done) {
+      if (done) {
         // After 60s, remove from board
         this.completionTimers[card.id] = setTimeout(() => {
           delete this.completionTimers[card.id];
