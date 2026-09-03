@@ -8,12 +8,13 @@
   <link rel="stylesheet" href="/umber-light.css" media="(prefers-color-scheme: light)">
   <link rel="stylesheet" href="/umber-dark.css"  media="(prefers-color-scheme: dark)">
   <link href="/app.css" rel="stylesheet" />
-  <script src="//unpkg.com/alpinejs" defer></script>
+  <script src="https://unpkg.com/tinykeys@4.0.0/dist/tinykeys.umd.js" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.17.1/dist/cdn.min.js" defer></script>
 </head>
 <body>
   <header>
     <h1>Kanban</h1>
-    <div class="shortcut">Quick entry <kbd>⌃⌥Space</kbd></div>
+    <div class="shortcut">Quick entry <kbd>⌃⌥Space</kbd> · Shortcuts <kbd>?</kbd></div>
     <div x-data id="status-bar">
       <div x-text="$store.status.error" id="error"></div>
       <div x-text="$store.status.msg" id="status"></div>
@@ -51,7 +52,10 @@
           <template x-if="!card._divider && !card.editing">
             <div class="card"
               :draggable="!card.done"
-              :class="card.done && 'done'"
+              :class="{ 'done': card.done, 'selected': card.id === selectedTaskID }"
+              :aria-selected="card.id === selectedTaskID"
+              :data-selected="card.id === selectedTaskID"
+              @click="selectCard(key, card)"
               @dragstart="onDragStart($event, card, key)">
               <input type="checkbox" class="card-check" title="Mark complete"
                 @change="onCardCheckChange($event, card)"
@@ -70,12 +74,20 @@
           </template>
 
           <template x-if="!card._divider && card.editing">
-            <div class="card" draggable="false">
+            <div class="card" draggable="false"
+              :data-editing="card.editing"
+              :class="{ 'selected': card.id === selectedTaskID }">
               <div class="card-body">
                 <input type="text" class="form-input"
-                  x-model="card.draft.name"><br/>
+                  x-model="card.draft.name"
+                  @keydown.escape.prevent="cancelEdit(card)"
+                  @keydown.meta.enter.prevent="saveEdit(card)"
+                  @keydown.ctrl.enter.prevent="saveEdit(card)"><br/>
                 <textarea class="form-textarea" rows="6"
-                  x-model="card.draft.note"></textarea><br/>
+                  x-model="card.draft.note"
+                  @keydown.escape.prevent="cancelEdit(card)"
+                  @keydown.meta.enter.prevent="saveEdit(card)"
+                  @keydown.ctrl.enter.prevent="saveEdit(card)"></textarea><br/>
                 <button class="btn save-btn" title="Save task"
                   @click="saveEdit(card)" >Save</button>
                 <button class="btn cancel-btn"
@@ -94,11 +106,12 @@
       </div>
       <div class="add-task" id="add-backlog"
         x-data="{newTask: '', focused: false}">
-        <input class="form-input" id="add-input-backlog"
+        <input class="form-input" :id="'add-input-' + key"
           placeholder="Add task…" rows="2"
           x-model="newTask"
           @focus="focused = true"
           @blur="focused = false"
+          @keydown.escape="$event.target.blur()"
           @keyup.enter.prevent="addTask(key, newTask); newTask='';"/>
         <button class="btn add-btn btn-primary" title="Add task"
           x-show="focused"
@@ -106,6 +119,19 @@
       </div>
     </div>
     </template>
+
+    <div class="shortcut-help panel" x-cloak x-show="showShortcuts"
+      @click.outside="showShortcuts = false">
+      <div class="panel-title">Keyboard shortcuts</div>
+      <div class="shortcut-list">
+        <template x-for="shortcut in shortcuts" :key="shortcut.description">
+          <div class="shortcut-row">
+            <kbd x-text="shortcut.binding"></kbd>
+            <span x-text="shortcut.description"></span>
+          </div>
+        </template>
+      </div>
+    </div>
   </div>
 
   <script src="/app.js"></script>
