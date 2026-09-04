@@ -3,6 +3,7 @@ const REFRESH_MS = 600000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 const COLUMN_KEYS = { "1": "backlog", "2": "ready", "3": "inprogress" };
+const HTTP_URL_PATTERN = /https?:\/\/[^\s<>"']*/;
 
 const SHORTCUTS = [
   {
@@ -39,6 +40,11 @@ const SHORTCUTS = [
     binding: "e",
     description: "Edit selected task",
     run: board => board.editSelected(),
+  },
+  {
+    binding: "o",
+    description: "Open selected task URL",
+    run: board => board.openSelectedURL(),
   },
   {
     binding: "x",
@@ -216,6 +222,14 @@ document.addEventListener('alpine:init', () => {
     editSelected() {
       const card = this.selectedCard();
       if (card) this.startEdit(card);
+    },
+
+    openSelectedURL() {
+      const card = this.selectedCard();
+      if (!card) return;
+
+      const url = firstURL(card.name) ?? firstURL(card.note);
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
     },
 
     toggleSelectedCompletion() {
@@ -434,11 +448,15 @@ function escapeHtml(str) {
 // wraps them in an anchor tag. Must run after escapeHtml.
 function linkify(escaped) {
   return escaped.replace(
-    /https?:\/\/[^\s<>"']*/g,
+    new RegExp(HTTP_URL_PATTERN.source, "g"),
     function(url) {
       return '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
     }
   );
+}
+
+function firstURL(text) {
+  return text?.match(HTTP_URL_PATTERN)?.[0] ?? null;
 }
 
 function setStatus(msg) {
