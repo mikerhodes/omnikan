@@ -61,7 +61,7 @@
                 @change="onCardCheckChange($event, card)"
                 :checked="card.done">
               <div class="card-body">
-                <div x-text="card.name" class="card-name"></div>
+                <div x-html="linkify(escapeHtml(card.name))" class="card-name"></div>
                 <div x-html="linkify(escapeHtml(card.note))" class="card-note"></div>
               </div>
               <div class="card-actions">
