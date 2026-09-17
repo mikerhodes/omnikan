@@ -171,6 +171,7 @@ document.addEventListener('alpine:init', () => {
         if (!response.ok) {
           throw new Error(`Response status: ${response.status}`);
         }
+        const refreshFailed = response.headers.get("X-Omnikan-Refresh-Error") === "true";
         const result = await response.json();
         for (const col of Object.keys(this.columns)) {
           for (const card of result[col] ?? []) {
@@ -188,7 +189,9 @@ document.addEventListener('alpine:init', () => {
           setError("Failed to load status: " + statusError.message);
           return;
         }
-        if (ready) {
+        if (refreshFailed) {
+          setError("Failed to refresh board; showing cached data.");
+        } else if (ready) {
           setStatus("Last updated: " + new Date().toLocaleTimeString());
         }
       } catch (error) {

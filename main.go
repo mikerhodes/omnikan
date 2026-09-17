@@ -170,6 +170,9 @@ func (s *serviceState) retryInitialization(ctx context.Context) {
 			}
 		}
 
+		if s.isReady() {
+			return
+		}
 		if err := s.initializeOnce(); err != nil {
 			delay = nextRetryDelay(delay)
 			nextRetry := time.Now().Add(delay)
@@ -192,6 +195,9 @@ func (s *serviceState) retryInitialization(ctx context.Context) {
 
 func nextRetryDelay(previous time.Duration) time.Duration {
 	if previous <= 0 {
+		if initialRetryDelay > maxRetryDelay {
+			return maxRetryDelay
+		}
 		return initialRetryDelay
 	}
 	next := previous * 2
@@ -228,6 +234,10 @@ func run(ctx context.Context, args []string) error {
 		host = "localhost"
 	}
 	fullAddr := net.JoinHostPort(host, port)
+
+	if *projectName == "" {
+		return errProjectRequired
+	}
 
 	state := newServiceState(*projectName)
 	go state.retryInitialization(ctx)

@@ -28,6 +28,13 @@ func TestNewServiceStateConfigError(t *testing.T) {
 	}
 }
 
+func TestRunRequiresProject(t *testing.T) {
+	err := run(context.Background(), []string{"-addr", "127.0.0.1:0"})
+	if !errors.Is(err, errProjectRequired) {
+		t.Fatalf("run() error = %v, want %v", err, errProjectRequired)
+	}
+}
+
 func TestInitializeOnceReady(t *testing.T) {
 	restore := stubOmniFocus(
 		func(projectName string) (string, error) {
@@ -147,6 +154,21 @@ func TestNextRetryDelayIsBounded(t *testing.T) {
 		if got := nextRetryDelay(tt.previous); got != tt.want {
 			t.Fatalf("nextRetryDelay(%s) = %s, want %s", tt.previous, got, tt.want)
 		}
+	}
+}
+
+func TestInitialRetryDelayIsBounded(t *testing.T) {
+	oldInitialRetryDelay := initialRetryDelay
+	oldMaxRetryDelay := maxRetryDelay
+	initialRetryDelay = 5 * time.Second
+	maxRetryDelay = time.Second
+	defer func() {
+		initialRetryDelay = oldInitialRetryDelay
+		maxRetryDelay = oldMaxRetryDelay
+	}()
+
+	if got := nextRetryDelay(0); got != time.Second {
+		t.Fatalf("nextRetryDelay(0) = %s, want %s", got, time.Second)
 	}
 }
 
