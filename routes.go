@@ -14,7 +14,7 @@ var (
 	assets embed.FS
 )
 
-func newServer(cache *writeThroughCache, dynamicAssets bool) http.Handler {
+func newServer(state *serviceState, dynamicAssets bool) http.Handler {
 	mux := http.NewServeMux()
 
 	// Serve assets either from disk (useful for debug) or
@@ -29,27 +29,38 @@ func newServer(cache *writeThroughCache, dynamicAssets bool) http.Handler {
 		mux.Handle("GET /", http.FileServerFS(assetsSub))
 	}
 
-	mux.HandleFunc("GET /api/board", handleBoard(cache))
-	mux.HandleFunc("POST /api/move", handleMove(cache))
-	mux.HandleFunc("POST /api/delete", handleDelete(cache))
-	mux.HandleFunc("POST /api/complete", handleComplete(cache))
-	mux.HandleFunc("POST /api/incomplete", handleIncomplete(cache))
-	mux.HandleFunc("POST /api/add", handleAdd(cache))
-	mux.HandleFunc("POST /api/edit", handleEdit(cache))
+	mux.HandleFunc("GET /api/status", handleStatus(state))
+	mux.HandleFunc("GET /api/board", handleBoard(state))
+	mux.HandleFunc("POST /api/move", handleMove(state))
+	mux.HandleFunc("POST /api/delete", handleDelete(state))
+	mux.HandleFunc("POST /api/complete", handleComplete(state))
+	mux.HandleFunc("POST /api/incomplete", handleIncomplete(state))
+	mux.HandleFunc("POST /api/add", handleAdd(state))
+	mux.HandleFunc("POST /api/edit", handleEdit(state))
 
 	return loggingHandler(mux)
 }
 
-func handleBoard(cache *writeThroughCache) http.HandlerFunc {
+func handleStatus(state *serviceState) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(state.initializationStatus()); err != nil {
+			log.Printf("handleStatus error: %v", err)
+			return
+		}
+	}
+}
+
+func handleBoard(state *serviceState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("force") == "true" {
-			if err := cache.refresh(); err != nil {
-				http.Error(w, "failed to refresh board", http.StatusInternalServerError)
-				return
+			if err := state.refreshBoard(); err != nil {
+				log.Printf("forced board refresh error: %v", err)
+				w.Header().Set("X-Omnikan-Refresh-Error", "true")
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		err := json.NewEncoder(w).Encode(cache.getBoard())
+		err := json.NewEncoder(w).Encode(state.cache.getBoard())
 		if err != nil {
 			log.Printf("handleBoard error: %v", err)
 			return
@@ -57,17 +68,21 @@ func handleBoard(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
-func handleMove(cache *writeThroughCache) http.HandlerFunc {
+func handleMove(state *serviceState) http.HandlerFunc {
 	var req struct {
 		ID     string `json:"id"`
 		NewCol Column `json:"newCol"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !state.isReady() {
+			http.Error(w, "OmniFocus initialization is not ready", http.StatusServiceUnavailable)
+			return
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		err := cache.moveTask(req.ID, req.NewCol)
+		err := state.cache.moveTask(req.ID, req.NewCol)
 		if err != nil {
 			log.Printf("Error moving column: %v", err)
 			http.Error(w, "failed to move task", http.StatusInternalServerError)
@@ -77,16 +92,20 @@ func handleMove(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
-func handleDelete(cache *writeThroughCache) http.HandlerFunc {
+func handleDelete(state *serviceState) http.HandlerFunc {
 	var req struct {
 		ID string `json:"id"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !state.isReady() {
+			http.Error(w, "OmniFocus initialization is not ready", http.StatusServiceUnavailable)
+			return
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		err := cache.deleteTask(req.ID)
+		err := state.cache.deleteTask(req.ID)
 		if err != nil {
 			http.Error(w, "failed to delete task", http.StatusInternalServerError)
 			return
@@ -95,16 +114,20 @@ func handleDelete(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
-func handleComplete(cache *writeThroughCache) http.HandlerFunc {
+func handleComplete(state *serviceState) http.HandlerFunc {
 	var req struct {
 		ID string `json:"id"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !state.isReady() {
+			http.Error(w, "OmniFocus initialization is not ready", http.StatusServiceUnavailable)
+			return
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		err := cache.completeTask(req.ID)
+		err := state.cache.completeTask(req.ID)
 		if err != nil {
 			http.Error(w, "failed to complete task", http.StatusInternalServerError)
 			return
@@ -113,16 +136,20 @@ func handleComplete(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
-func handleIncomplete(cache *writeThroughCache) http.HandlerFunc {
+func handleIncomplete(state *serviceState) http.HandlerFunc {
 	var req struct {
 		ID string `json:"id"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !state.isReady() {
+			http.Error(w, "OmniFocus initialization is not ready", http.StatusServiceUnavailable)
+			return
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		err := cache.uncompleteTask(req.ID)
+		err := state.cache.uncompleteTask(req.ID)
 		if err != nil {
 			http.Error(w, "failed to incomplete task", http.StatusInternalServerError)
 			return
@@ -131,12 +158,16 @@ func handleIncomplete(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
-func handleAdd(cache *writeThroughCache) http.HandlerFunc {
+func handleAdd(state *serviceState) http.HandlerFunc {
 	var req struct {
 		Name string `json:"name"`
 		Col  Column `json:"col"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !state.isReady() {
+			http.Error(w, "OmniFocus initialization is not ready", http.StatusServiceUnavailable)
+			return
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
@@ -145,7 +176,7 @@ func handleAdd(cache *writeThroughCache) http.HandlerFunc {
 			http.Error(w, "name is required", http.StatusBadRequest)
 			return
 		}
-		task, err := cache.addTask(req.Name, req.Col)
+		task, err := state.cache.addTask(req.Name, req.Col)
 		if err != nil {
 			log.Printf("AddTask error: %v", err)
 			http.Error(w, "failed to add task", http.StatusInternalServerError)
@@ -160,18 +191,22 @@ func handleAdd(cache *writeThroughCache) http.HandlerFunc {
 	}
 }
 
-func handleEdit(cache *writeThroughCache) http.HandlerFunc {
+func handleEdit(state *serviceState) http.HandlerFunc {
 	var req struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 		Note string `json:"note"`
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !state.isReady() {
+			http.Error(w, "OmniFocus initialization is not ready", http.StatusServiceUnavailable)
+			return
+		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request", http.StatusBadRequest)
 			return
 		}
-		task, err := cache.editTask(req.ID, req.Name, req.Note)
+		task, err := state.cache.editTask(req.ID, req.Name, req.Note)
 		if err != nil {
 			log.Printf("EditTask error: %v", err)
 			http.Error(w, "failed to edit task", http.StatusInternalServerError)
