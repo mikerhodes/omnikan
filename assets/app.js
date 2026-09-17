@@ -1,5 +1,6 @@
 
 const REFRESH_MS = 600000;
+const STATUS_REFRESH_MS = 5000;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 const COLUMN_KEYS = { "1": "backlog", "2": "ready", "3": "inprogress" };
@@ -87,6 +88,8 @@ document.addEventListener('alpine:init', () => {
     shortcuts: SHORTCUTS,
     removeKeyboardBindings: null,
     refreshTimer: null,
+    statusTimer: null,
+    initStatus: null,
     columns: {
       "backlog": "Backlog",
       "ready": "Ready",
@@ -112,11 +115,52 @@ document.addEventListener('alpine:init', () => {
       );
       await this.loadBoard();
       this.refreshTimer = setInterval(() => this.loadBoard(false), REFRESH_MS);
+      this.statusTimer = setInterval(() => this.refreshStatus(), STATUS_REFRESH_MS);
     },
 
     destroy() {
       this.removeKeyboardBindings?.();
       clearInterval(this.refreshTimer);
+      clearInterval(this.statusTimer);
+    },
+
+    async loadStatus() {
+      const response = await fetch("/api/status");
+      if (!response.ok) {
+        throw new Error(`Response status: ${response.status}`);
+      }
+      const status = await response.json();
+      this.initStatus = status;
+
+      if (status.state === "ready") {
+        return true;
+      }
+      if (status.state === "configuration_error") {
+        setError("Configuration error: " + status.error);
+      } else if (status.state === "retrying") {
+        const retry = status.nextRetry
+          ? " Retrying at " + new Date(status.nextRetry).toLocaleTimeString() + "."
+          : " Retrying.";
+        setError("OmniFocus initialization failed." + retry + " " + status.error);
+      } else if (status.state === "degraded") {
+        setError("OmniFocus refresh failed: " + status.error);
+      } else {
+        setStatus("Initializing OmniFocus…");
+      }
+      return false;
+    },
+
+    async refreshStatus() {
+      const wasReady = this.initStatus?.state === "ready";
+      try {
+        const ready = await this.loadStatus();
+        if (ready && !wasReady) {
+          await this.loadBoard(false);
+        }
+      } catch (error) {
+        console.error(error.message);
+        setError("Failed to load status: " + error.message);
+      }
     },
 
     async loadBoard(reloadFromOmnifocus) {
@@ -136,7 +180,9 @@ document.addEventListener('alpine:init', () => {
         }
         this.board = result;
         this.ensureSelection();
-        setStatus("Last updated: " + new Date().toLocaleTimeString());
+        if (await this.loadStatus()) {
+          setStatus("Last updated: " + new Date().toLocaleTimeString());
+        }
       } catch (error) {
         console.error(error.message);
         setError("Failed to load board: " + error.message);

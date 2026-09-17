@@ -10,6 +10,8 @@ import (
 	"github.com/mikerhodes/omnikan/internal/omnifocus"
 )
 
+var tasksForProject = omnifocus.TasksForProject
+
 // Column is a kanban column identifier.
 type Column string
 
@@ -76,6 +78,14 @@ type kanbanBoard struct {
 	InProgress boardColumn `json:"inprogress"`
 }
 
+func newEmptyKanbanBoard() *kanbanBoard {
+	return &kanbanBoard{
+		Backlog:    []omnifocus.Task{},
+		Ready:      []omnifocus.Task{},
+		InProgress: []omnifocus.Task{},
+	}
+}
+
 // columnForTask returns the kanban column for a task by inspecting its tags.
 // Defaults to TagBacklog: all project tasks should be on the board.
 func columnForTask(t *omnifocus.Task) Column {
@@ -118,19 +128,21 @@ func (c *writeThroughCache) getBoard() *kanbanBoard {
 	return c.board
 }
 
+func (c *writeThroughCache) setProjectID(projectID string) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	c.projectID = projectID
+}
+
 // refresh fetches all columns from OmniFocus and updates the cache.
 func (c *writeThroughCache) refresh() error {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 
-	newBoard := kanbanBoard{
-		Backlog:    []omnifocus.Task{},
-		Ready:      []omnifocus.Task{},
-		InProgress: []omnifocus.Task{},
-	}
+	newBoard := newEmptyKanbanBoard()
 	newTasks := map[string]*omnifocus.Task{}
 
-	tasks, err := omnifocus.TasksForProject(c.projectID)
+	tasks, err := tasksForProject(c.projectID)
 	if err != nil {
 		return fmt.Errorf("error getting tasks for project: %w", err)
 	}
@@ -144,7 +156,7 @@ func (c *writeThroughCache) refresh() error {
 	}
 
 	// Update cache on all successful
-	c.board = &newBoard
+	c.board = newBoard
 	c.tasks = newTasks
 
 	log.Printf("board cache refreshed: %d backlog, %d ready, %d inprogress",
