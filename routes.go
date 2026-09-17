@@ -54,7 +54,10 @@ func handleStatus(state *serviceState) http.HandlerFunc {
 func handleBoard(state *serviceState) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("force") == "true" {
-			_ = state.refreshBoard()
+			if err := state.refreshBoard(); err != nil {
+				log.Printf("forced board refresh error: %v", err)
+				w.Header().Set("X-Omnikan-Refresh-Error", "true")
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		err := json.NewEncoder(w).Encode(state.cache.getBoard())

@@ -180,7 +180,15 @@ document.addEventListener('alpine:init', () => {
         }
         this.board = result;
         this.ensureSelection();
-        if (await this.loadStatus()) {
+        let ready = false;
+        try {
+          ready = await this.loadStatus();
+        } catch (statusError) {
+          console.error(statusError.message);
+          setError("Failed to load status: " + statusError.message);
+          return;
+        }
+        if (ready) {
           setStatus("Last updated: " + new Date().toLocaleTimeString());
         }
       } catch (error) {

@@ -19,9 +19,10 @@ import (
 const boardRefreshInterval = 10 * time.Minute
 
 var (
-	projectIDLookup   = omnifocus.ProjectID
-	initialRetryDelay = 2 * time.Second
-	maxRetryDelay     = 1 * time.Minute
+	projectIDLookup    = omnifocus.ProjectID
+	initialRetryDelay  = 2 * time.Second
+	maxRetryDelay      = 1 * time.Minute
+	errProjectRequired = errors.New("-project is required")
 )
 
 const (
@@ -58,7 +59,7 @@ func newServiceState(projectName string) *serviceState {
 	if projectName == "" {
 		status = initializationStatus{
 			State:       initStateConfigError,
-			Error:       "-project is required",
+			Error:       errProjectRequired.Error(),
 			Recoverable: false,
 		}
 	}
@@ -117,7 +118,7 @@ func (s *serviceState) initializeOnce() error {
 	defer s.initMu.Unlock()
 
 	if s.projectName == "" {
-		return errors.New("-project is required")
+		return errProjectRequired
 	}
 
 	id, err := projectIDLookup(s.projectName)
@@ -138,7 +139,11 @@ func (s *serviceState) initializeOnce() error {
 
 func (s *serviceState) refreshBoard() error {
 	if !s.isReady() {
-		return s.initializeOnce()
+		err := s.initializeOnce()
+		if err != nil {
+			s.setDegraded(err)
+		}
+		return err
 	}
 	if err := s.cache.refresh(); err != nil {
 		s.setDegraded(err)
