@@ -45,7 +45,9 @@ type serviceState struct {
 	projectName string
 	cache       *writeThroughCache
 
+	// initMu serializes initialization attempts. Never take initMu while holding mu.
 	initMu sync.Mutex
+	// mu guards status and ready.
 	mu     sync.Mutex
 	status initializationStatus
 	ready  bool
@@ -140,7 +142,7 @@ func (s *serviceState) initializeOnce() error {
 func (s *serviceState) refreshBoard() error {
 	if !s.isReady() {
 		err := s.initializeOnce()
-		if err != nil {
+		if err != nil && s.projectName != "" {
 			s.setDegraded(err)
 		}
 		return err

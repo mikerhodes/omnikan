@@ -35,6 +35,23 @@ func TestRunRequiresProject(t *testing.T) {
 	}
 }
 
+func TestRefreshBoardPreservesConfigError(t *testing.T) {
+	state := newServiceState("")
+
+	err := state.refreshBoard()
+	if !errors.Is(err, errProjectRequired) {
+		t.Fatalf("refreshBoard() error = %v, want %v", err, errProjectRequired)
+	}
+
+	status := state.initializationStatus()
+	if status.State != initStateConfigError {
+		t.Fatalf("state = %q, want %q", status.State, initStateConfigError)
+	}
+	if status.Recoverable {
+		t.Fatal("configuration error should not become recoverable")
+	}
+}
+
 func TestInitializeOnceReady(t *testing.T) {
 	restore := stubOmniFocus(
 		func(projectName string) (string, error) {
