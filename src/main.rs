@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
     let refresh_cache = Arc::clone(&cache);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(600));
+        interval.tick().await;
         loop {
             interval.tick().await;
             let cache = Arc::clone(&refresh_cache);
