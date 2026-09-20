@@ -134,6 +134,6 @@ pub fn router(cache: SharedCache) -> Router {
         .route("/api/incomplete", post(incomplete))
         .route("/api/add", post(add))
         .route("/api/edit", post(edit))
-        .fallback_service(ServeDir::new("assets"))
+        .fallback_service(ServeDir::new("assets").append_index_html_on_directories(true))
         .with_state(cache)
 }
