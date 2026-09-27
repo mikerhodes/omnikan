@@ -1,8 +1,8 @@
-use crate::board::{Board, Column, WriteThroughCache};
+use crate::board::{Column, WriteThroughCache};
 use axum::{
     extract::{Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -95,106 +95,107 @@ struct BoardQuery {
     force: bool,
 }
 
-async fn board(
-    State(cache): State<SharedCache>,
-    Query(query): Query<BoardQuery>,
-) -> impl IntoResponse {
-    if query.force {
-        let result = tokio::task::spawn_blocking(move || {
-            let mut cache = cache
-                .lock()
-                .map_err(|_| anyhow::anyhow!("cache lock poisoned"))?;
-            cache.refresh()?;
-            Ok::<Board, anyhow::Error>(cache.get_board())
-        })
-        .await;
-        return match result {
-            Ok(Ok(board)) => Json(board).into_response(),
-            _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+async fn board(State(cache): State<SharedCache>, Query(query): Query<BoardQuery>) -> Response {
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut cache) = cache.lock() else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         };
-    }
-    match cache.lock() {
-        Ok(cache) => Json(cache.get_board()).into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
-}
-
-async fn add_task(
-    State(cache): State<SharedCache>,
-    Json(req): Json<AddRequest>,
-) -> impl IntoResponse {
-    let result = tokio::task::spawn_blocking(move || {
-        cache
-            .lock()
-            .map_err(|_| anyhow::anyhow!("cache lock poisoned"))
-            .and_then(|mut c| c.add_task(req.name.as_str(), req.col))
-    })
-    .await;
-    match result {
-        Ok(Ok(task)) => Json(task).into_response(),
-        _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
-}
-
-async fn edit_task(
-    State(cache): State<SharedCache>,
-    Json(req): Json<EditRequest>,
-) -> impl IntoResponse {
-    let result = tokio::task::spawn_blocking(move || {
-        cache
-            .lock()
-            .map_err(|_| anyhow::anyhow!("cache lock poisoned"))
-            .and_then(|mut c| c.edit_task(req.id.as_str(), &req.name, &req.note))
-    })
-    .await;
-    match result {
-        Ok(Ok(task)) => Json(task).into_response(),
-        _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
-}
-
-async fn move_task(
-    State(cache): State<SharedCache>,
-    Json(req): Json<MoveRequest>,
-) -> impl IntoResponse {
-    operation(cache, move |cache| {
-        cache.move_task(req.id.as_str(), req.new_col)
+        if query.force && cache.refresh().is_err() {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+        Json(cache.get_board()).into_response()
     })
     .await
+    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
-async fn delete_task(
-    State(cache): State<SharedCache>,
-    Json(req): Json<IdRequest>,
-) -> impl IntoResponse {
-    operation(cache, move |cache| cache.delete_task(req.id.as_str())).await
+
+async fn add_task(State(cache): State<SharedCache>, Json(req): Json<AddRequest>) -> Response {
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut cache) = cache.lock() else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        };
+        let result = cache.add_task(req.name.as_str(), req.col);
+        match result {
+            Ok(task) => Json(task).into_response(),
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    })
+    .await
+    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
-async fn complete_task(
-    State(cache): State<SharedCache>,
-    Json(req): Json<IdRequest>,
-) -> impl IntoResponse {
-    operation(cache, move |cache| cache.complete_task(req.id.as_str())).await
+
+async fn edit_task(State(cache): State<SharedCache>, Json(req): Json<EditRequest>) -> Response {
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut cache) = cache.lock() else {
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        };
+        let result = cache.edit_task(req.id.as_str(), &req.name, &req.note);
+        match result {
+            Ok(task) => Json(task).into_response(),
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        }
+    })
+    .await
+    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
+
+async fn move_task(State(cache): State<SharedCache>, Json(req): Json<MoveRequest>) -> StatusCode {
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut cache) = cache.lock() else {
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        };
+        match cache.move_task(req.id.as_str(), req.new_col) {
+            Ok(()) => StatusCode::NO_CONTENT,
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    })
+    .await
+    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn delete_task(State(cache): State<SharedCache>, Json(req): Json<IdRequest>) -> StatusCode {
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut cache) = cache.lock() else {
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        };
+        match cache.delete_task(req.id.as_str()) {
+            Ok(()) => StatusCode::NO_CONTENT,
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    })
+    .await
+    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+async fn complete_task(State(cache): State<SharedCache>, Json(req): Json<IdRequest>) -> StatusCode {
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut cache) = cache.lock() else {
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        };
+        match cache.complete_task(req.id.as_str()) {
+            Ok(()) => StatusCode::NO_CONTENT,
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    })
+    .await
+    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 async fn incomplete_task(
     State(cache): State<SharedCache>,
     Json(req): Json<IdRequest>,
-) -> impl IntoResponse {
-    operation(cache, move |cache| cache.uncomplete_task(req.id.as_str())).await
-}
-async fn operation<F>(cache: SharedCache, f: F) -> axum::response::Response
-where
-    F: FnOnce(&mut WriteThroughCache) -> anyhow::Result<()> + Send + 'static,
-{
-    let result = tokio::task::spawn_blocking(move || {
-        cache
-            .lock()
-            .map_err(|_| anyhow::anyhow!("cache lock poisoned"))
-            .and_then(|mut c| f(&mut c))
+) -> StatusCode {
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut cache) = cache.lock() else {
+            return StatusCode::INTERNAL_SERVER_ERROR;
+        };
+        match cache.uncomplete_task(req.id.as_str()) {
+            Ok(()) => StatusCode::NO_CONTENT,
+            Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
     })
-    .await;
-    match result {
-        Ok(Ok(())) => StatusCode::NO_CONTENT.into_response(),
-        _ => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
+    .await
+    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub fn router(cache: SharedCache) -> Router {
