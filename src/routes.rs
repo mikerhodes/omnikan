@@ -6,86 +6,47 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Deserialize;
-use std::convert::TryFrom;
-use std::fmt;
+use serde::{Deserialize, Deserializer};
 use std::sync::{Arc, Mutex};
 use tower_http::services::ServeDir;
 
 pub type SharedCache = Arc<Mutex<WriteThroughCache>>;
 
-#[derive(Debug)]
-struct EmptyName;
-impl fmt::Display for EmptyName {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("name is required")
+fn non_empty<'de, D>(d: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = String::deserialize(d)?;
+    if value.trim().is_empty() {
+        return Err(serde::de::Error::custom("must not be empty"));
     }
-}
 
-#[derive(Debug)]
-struct EmptyTaskId;
-impl fmt::Display for EmptyTaskId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("task ID is required")
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(try_from = "String")]
-struct TaskId(String);
-impl TryFrom<String> for TaskId {
-    type Error = EmptyTaskId;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.trim().is_empty() {
-            return Err(EmptyTaskId);
-        }
-        Ok(Self(value))
-    }
-}
-impl TaskId {
-    fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(try_from = "String")]
-struct TaskName(String);
-impl TryFrom<String> for TaskName {
-    type Error = EmptyName;
-
-    fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.trim().is_empty() {
-            return Err(EmptyName);
-        }
-        Ok(Self(value))
-    }
-}
-impl TaskName {
-    fn as_str(&self) -> &str {
-        &self.0
-    }
+    Ok(value)
 }
 
 #[derive(Deserialize)]
 struct IdRequest {
-    id: TaskId,
+    #[serde(deserialize_with = "non_empty")]
+    id: String,
 }
 #[derive(Deserialize)]
 struct MoveRequest {
-    id: TaskId,
+    #[serde(deserialize_with = "non_empty")]
+    id: String,
     #[serde(rename = "newCol")]
     new_col: Column,
 }
 #[derive(Deserialize)]
 struct AddRequest {
-    name: TaskName,
+    #[serde(deserialize_with = "non_empty")]
+    name: String,
     col: Column,
 }
 #[derive(Deserialize)]
 struct EditRequest {
-    id: TaskId,
+    #[serde(deserialize_with = "non_empty")]
+    id: String,
+    #[serde(deserialize_with = "non_empty")]
     name: String,
     note: String,
 }
