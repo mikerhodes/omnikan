@@ -40,13 +40,18 @@ async fn main() -> Result<()> {
         loop {
             interval.tick().await;
             let cache = Arc::clone(&refresh_cache);
-            let _ = tokio::task::spawn_blocking(move || {
+            match tokio::task::spawn_blocking(move || {
                 cache
                     .lock()
                     .map_err(|_| anyhow::anyhow!("cache lock poisoned"))
                     .and_then(|mut c| c.refresh())
             })
-            .await;
+            .await
+            {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => eprintln!("board refresh error: {error:#}"),
+                Err(error) => eprintln!("board refresh task error: {error}"),
+            }
         }
     });
     let listener = TcpListener::bind(&args.addr)
