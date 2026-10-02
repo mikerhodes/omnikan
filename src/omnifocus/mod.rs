@@ -13,7 +13,9 @@ pub struct Task {
     pub id: String,
     pub name: String,
     pub note: String,
+    #[serde(default)]
     pub added: String,
+    #[serde(default)]
     pub tags: Vec<String>,
 }
 

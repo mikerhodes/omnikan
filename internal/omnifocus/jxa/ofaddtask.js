@@ -26,7 +26,6 @@
       id: task.id.primaryKey,
       name: task.name,
       note: task.note,
-      added: new Date(), // tasks don't get value for added until saved
       tags: task.tags.map(tg => tg.name)
     })
   }
