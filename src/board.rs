@@ -22,17 +22,15 @@ impl Column {
 }
 
 fn column_for_task(task: &Task) -> Column {
-    if task.tags.iter().any(|tag| tag == omnifocus::TAG_READY) {
-        Column::Ready
-    } else if task
-        .tags
-        .iter()
-        .any(|tag| tag == omnifocus::TAG_IN_PROGRESS)
-    {
-        Column::Inprogress
-    } else {
-        Column::Backlog
+    for tag in &task.tags {
+        match tag.as_str() {
+            omnifocus::TAG_BACKLOG => return Column::Backlog,
+            omnifocus::TAG_READY => return Column::Ready,
+            omnifocus::TAG_IN_PROGRESS => return Column::Inprogress,
+            _ => {}
+        }
     }
+    Column::Backlog
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
