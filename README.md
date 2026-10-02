@@ -19,7 +19,14 @@ Omnikan is a Kanban board view for your [Omnifocus](https://www.omnigroup.com/om
 4. Start Omnikan:
 
     ```
-    go run . -project "my project"
+    cargo run -- --project "my project"
+    ```
+
+   Or build a binary first:
+
+    ```
+    cargo build --release
+    ./target/release/omnikan --project "my project"
     ```
 
 5. Open http://localhost:8080 (by default).

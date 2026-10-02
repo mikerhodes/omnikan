@@ -20,7 +20,7 @@ All logic should live in the OmniJS layer. As an AI, OmniJS is harder to get rig
 3. **Test the OmniJS snippet** — humans can paste it directly into the automation console for fast iteration. AIs need to run the full script via `osascript`.
 4. **Run the full script** with `osascript -l JavaScript my-script.js | jq .` and inspect the output.
 5. **Iterate** until the output is correct and edge cases (missing task, wrong tag, null project) are handled.
-6. Only once the script is stable, write the Go wrapper and any UI changes.
+6. Only once the script is stable, write the Rust wrapper and any UI changes.
 
 ---
 
@@ -60,24 +60,30 @@ the args JSON string as its sole argument. The function parses args itself.
 
 For console testing, call `script('{"key":"value"}')` directly.
 
-### Running from Go
+### Running from Rust
 
 Pass the script file via stdin to `osascript -l JavaScript`. Pass arguments via `OSA_ARGS`.
-The OmniFocus scripting bridge is single-threaded — make calls sequentially from Go.
+The OmniFocus scripting bridge is single-threaded — make calls sequentially from Rust.
 
-```go
-func executeScript(jsCode []byte, args []byte) ([]byte, error) {
-    cmd := exec.Command("/usr/bin/osascript", "-l", "JavaScript")
-    cmd.Env = append(os.Environ(), "OSA_ARGS="+string(args))
-    stdin, err := cmd.StdinPipe()
-    if err != nil {
-        return nil, err
+```rust
+use std::io::Write;
+use std::process::{Command, Stdio};
+
+fn execute_script(js_code: &[u8], args: &[u8]) -> std::io::Result<Vec<u8>> {
+    let mut child = Command::new("/usr/bin/osascript")
+        .args(["-l", "JavaScript"])
+        .env("OSA_ARGS", String::from_utf8_lossy(args).into_owned())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()?;
+
+    {
+        let stdin = child.stdin.as_mut().expect("stdin unavailable");
+        stdin.write_all(js_code)?;
     }
-    go func() {
-        defer stdin.Close()
-        stdin.Write(jsCode)
-    }()
-    return cmd.Output()
+
+    let output = child.wait_with_output()?;
+    Ok(output.stdout)
 }
 ```
 
