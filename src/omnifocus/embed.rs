@@ -1,0 +1,9 @@
+pub(crate) const OFMARKTASKSCOMPLETE: &[u8] = include_bytes!("jxa/ofmarktaskcomplete.js");
+pub(crate) const OFPROJECTID: &[u8] = include_bytes!("jxa/ofprojectid.js");
+pub(crate) const OFEDITTASK: &[u8] = include_bytes!("jxa/ofedittask.js");
+pub(crate) const OFTASKSFORPROJECT: &[u8] = include_bytes!("jxa/oftasksforproject.js");
+pub(crate) const OFSWAPTAG: &[u8] = include_bytes!("jxa/ofswaptag.js");
+pub(crate) const OFMARKTASKINCOMPLETE: &[u8] = include_bytes!("jxa/ofmarktaskincomplete.js");
+pub(crate) const OFGETTASK: &[u8] = include_bytes!("jxa/ofgettask.js");
+pub(crate) const OFDELETETASK: &[u8] = include_bytes!("jxa/ofdeletetask.js");
+pub(crate) const OFADDTASK: &[u8] = include_bytes!("jxa/ofaddtask.js");
